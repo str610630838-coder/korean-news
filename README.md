@@ -1,62 +1,70 @@
-# 中文历史杂志资源库
+# YouTube 镜像站（FastAPI）
 
-这是一个可直接部署到 GitHub Pages 的静态网站，用于展示“中文历史杂志/期刊”资源索引。  
-数据通过抓取脚本定时更新，前端只读取本地 JSON 文件，不依赖后端服务。
+这是一个可直接部署的 YouTube 镜像站示例：
+
+- 前端：搜索页 + 播放器页（同域调用）
+- 后端：FastAPI + `yt-dlp`，提供搜索、详情、视频流代理
+- 目标：客户端只访问你自己的域名，不直接请求 YouTube 页面
+
+> 说明：本项目仅用于学习与技术演示，请遵守当地法律法规、平台服务条款与版权要求。
 
 ## 功能
 
-- 中文界面，支持关键词搜索
-- 按来源筛选（书格 / 中文维基百科）
-- 展示资源标题、年份、摘要、跳转链接
-- GitHub Actions 定时更新资源数据
-- GitHub Pages 自动部署
+- 关键词搜索视频（`/api/search`）
+- 读取视频详情与可播放格式（`/api/video/{id}`）
+- 服务端代理视频流（`/api/stream/{id}`，支持 Range）
+- 简洁的中文前端界面（搜索、卡片列表、站内播放）
 
 ## 项目结构
 
 ```text
 .
-├── index.html
-├── script.js
-├── styles.css
-├── data/
-│   └── magazines.json
-├── scripts/
-│   └── fetch_magazines.py
-└── .github/workflows/
-    ├── update-magazines.yml
-    └── deploy-pages.yml
+├── app.py            # FastAPI 主程序
+├── requirements.txt
+├── index.html        # 前端页面
+├── script.js         # 前端逻辑
+└── styles.css        # 前端样式
 ```
 
 ## 本地运行
 
+1) 安装依赖
+
 ```bash
-python scripts/fetch_magazines.py
-python -m http.server 8000
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-打开 `http://localhost:8000` 即可访问。
+2) 启动服务
 
-## 自动化说明
+```bash
+uvicorn app:app --host 0.0.0.0 --port 8000
+```
 
-### 1) 数据更新工作流
+3) 浏览器打开
 
-文件：`.github/workflows/update-magazines.yml`
+`http://127.0.0.1:8000`
 
-- 定时执行抓取脚本（每 8 小时）
-- 若 `data/magazines.json` 有变化则自动提交并推送
+## API 简要
 
-### 2) Pages 部署工作流
+- `GET /api/health` 健康检查
+- `GET /api/search?q=关键词&limit=18`
+- `GET /api/video/{video_id}`
+- `GET /api/stream/{video_id}?format_id=18`
 
-文件：`.github/workflows/deploy-pages.yml`
+## 部署建议
 
-- 分支 push 或手动触发时自动部署
-- 将仓库根目录作为静态站点发布内容
+推荐部署到支持 Python 长连接流式响应的平台（如云服务器 / 容器平台）：
 
-## GitHub Pages 地址
+- 使用 Nginx/Caddy 做反向代理
+- 打开 HTTPS（必须）
+- 为 `/api/stream/*` 设置更高超时时间
+- 视并发配置带宽与缓存策略
 
-- 用户主页仓库（`<username>.github.io`）：`https://<username>.github.io/`
-- 项目仓库（如 `korean-news`）：`https://<username>.github.io/korean-news/`
+## 一键容器启动（可选）
 
-## 说明
-
-本项目仅聚合公开可访问资源链接，内容版权归原始站点及作者所有。
+```bash
+docker build -t youtube-mirror .
+docker run -p 8000:8000 youtube-mirror
+```

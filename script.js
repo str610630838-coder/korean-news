@@ -1,191 +1,155 @@
-const loadingEl = document.getElementById('loading');
-const errorEl = document.getElementById('error');
-const resourceContainer = document.getElementById('resourceContainer');
-const refreshBtn = document.getElementById('refreshBtn');
-const updatedAtEl = document.getElementById('updatedAt');
-const totalCountEl = document.getElementById('totalCount');
-const sourceSummaryEl = document.getElementById('sourceSummary');
-const searchInputEl = document.getElementById('searchInput');
-const clearSearchBtnEl = document.getElementById('clearSearchBtn');
+const searchForm = document.getElementById("searchForm");
+const searchInput = document.getElementById("searchInput");
+const searchBtn = document.getElementById("searchBtn");
+const quickButtons = document.querySelectorAll(".quick-btn");
+const statusText = document.getElementById("statusText");
+const resultCount = document.getElementById("resultCount");
+const videoGrid = document.getElementById("videoGrid");
+const loading = document.getElementById("loading");
+const errorBox = document.getElementById("errorBox");
+const playerPanel = document.getElementById("playerPanel");
+const playerTitle = document.getElementById("playerTitle");
+const playerMeta = document.getElementById("playerMeta");
+const videoPlayer = document.getElementById("videoPlayer");
+const closePlayerBtn = document.getElementById("closePlayerBtn");
 
-let allItems = [];
-let currentSource = 'all';
-let currentKeyword = '';
+let lastItems = [];
 
-function getDataCandidates() {
-    const list = ['data/magazines.json'];
-    const segments = window.location.pathname.split('/').filter(Boolean);
-    if (segments.length > 0) {
-        list.push(`/${segments[0]}/data/magazines.json`);
-    }
-    list.push('/data/magazines.json');
-    return [...new Set(list)];
+function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text ?? "";
+    return div.innerHTML;
 }
 
-function sourceLabel(source) {
-    if (source === 'shuge') return '书格';
-    if (source === 'zh-wikipedia') return '中文维基百科';
-    return source || '未知来源';
+function setLoading(visible) {
+    loading.classList.toggle("hidden", !visible);
+    searchBtn.disabled = visible;
 }
 
-function safeText(value) {
-    if (value === null || value === undefined) return '';
-    return String(value);
+function showError(message) {
+    errorBox.textContent = message;
+    errorBox.classList.remove("hidden");
 }
 
-function formatYear(item) {
-    const year = safeText(item.year).trim();
-    if (year) return year;
-    const date = safeText(item.date).trim();
-    if (/^\d{4}/.test(date)) return date.slice(0, 4);
-    return '年份未知';
+function hideError() {
+    errorBox.classList.add("hidden");
+    errorBox.textContent = "";
 }
 
-function normalizeLink(link) {
-    const raw = safeText(link).trim();
-    if (!raw) return '#';
-    try {
-        const url = new URL(raw, window.location.origin);
-        if (url.protocol === 'http:' || url.protocol === 'https:') {
-            return url.href;
-        }
-    } catch (_) {
-        // ignore invalid URL
-    }
-    return '#';
+function renderEmpty() {
+    videoGrid.innerHTML = '<div class="error">没有搜索到结果，请换个关键词试试。</div>';
+    resultCount.textContent = "0";
 }
 
 function renderCards(items) {
     if (!items.length) {
-        resourceContainer.innerHTML = '<div class="empty">没有匹配到资源，请尝试其他关键词。</div>';
-        totalCountEl.textContent = '0';
+        renderEmpty();
         return;
     }
 
-    resourceContainer.innerHTML = items.map((item) => {
-        const title = escapeHtml(safeText(item.title) || '未命名资源');
-        const summary = escapeHtml(safeText(item.summary) || '暂无摘要');
-        const year = escapeHtml(formatYear(item));
-        const source = escapeHtml(sourceLabel(item.source));
-        const link = normalizeLink(item.link);
+    videoGrid.innerHTML = items.map((item) => {
+        const title = escapeHtml(item.title || "无标题");
+        const uploader = escapeHtml(item.uploader || "未知频道");
+        const duration = escapeHtml(item.duration || "未知");
+        const thumb = escapeHtml(item.thumbnail || "");
+        const link = escapeHtml(item.webpage_url || "#");
+        const videoId = escapeHtml(item.id || "");
         return `
-            <article class="card">
-                <div class="card-meta">
-                    <span class="badge">${source}</span>
-                    <span class="year">${year}</span>
+            <article class="video-card">
+                <img class="video-thumb" src="${thumb}" alt="${title}" loading="lazy">
+                <div class="video-content">
+                    <h3 class="video-title">${title}</h3>
+                    <p class="video-meta">${uploader} · 时长 ${duration}</p>
+                    <div class="video-actions">
+                        <button class="play-btn" data-id="${videoId}" type="button">站内播放</button>
+                        <a class="jump-link" href="${link}" target="_blank" rel="noopener noreferrer">原站链接</a>
+                    </div>
                 </div>
-                <h3>${title}</h3>
-                <p>${summary}</p>
-                <a href="${link}" target="_blank" rel="noopener noreferrer">查看原文</a>
             </article>
         `;
-    }).join('');
+    }).join("");
 
-    totalCountEl.textContent = String(items.length);
+    resultCount.textContent = String(items.length);
 }
 
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function showLoading() {
-    loadingEl.style.display = 'block';
-    errorEl.style.display = 'none';
-    resourceContainer.innerHTML = '';
-}
-
-function hideLoading() {
-    loadingEl.style.display = 'none';
-}
-
-function showError(message = '未能加载资源数据，请稍后重试。') {
-    loadingEl.style.display = 'none';
-    errorEl.style.display = 'block';
-    errorEl.innerHTML = `<p>${escapeHtml(message)}</p>`;
-}
-
-function applyFilters() {
-    const keyword = currentKeyword.trim().toLowerCase();
-    const filtered = allItems.filter((item) => {
-        const matchSource = currentSource === 'all' || item.source === currentSource;
-        const corpus = `${safeText(item.title)} ${safeText(item.summary)} ${safeText(item.subjects)}`.toLowerCase();
-        const matchKeyword = !keyword || corpus.includes(keyword);
-        return matchSource && matchKeyword;
-    });
-    renderCards(filtered);
-}
-
-function updateSummary(meta) {
-    updatedAtEl.textContent = safeText(meta.updatedAt) || '未知';
-    const sourceLines = Object.entries(meta.sourceStats || {}).map(([key, value]) => {
-        return `${sourceLabel(key)}：${value}`;
-    });
-    sourceSummaryEl.textContent = sourceLines.length ? `来源分布：${sourceLines.join(' · ')}` : '来源分布：暂无';
-}
-
-async function loadData() {
-    showLoading();
-    refreshBtn.disabled = true;
+async function fetchSearch(query) {
+    setLoading(true);
+    hideError();
+    statusText.textContent = `正在搜索：${query}`;
     try {
-        if (window.location.protocol === 'file:') {
-            throw new Error('当前是 file:// 打开方式，请使用 HTTP 服务器或 GitHub Pages 访问。');
+        const resp = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=18`);
+        if (!resp.ok) {
+            throw new Error(`HTTP ${resp.status}`);
         }
-
-        const candidates = getDataCandidates();
-        let data = null;
-        let lastError = null;
-
-        for (const url of candidates) {
-            try {
-                const response = await fetch(`${url}?v=${Date.now()}`, { cache: 'no-cache' });
-                if (!response.ok) {
-                    throw new Error(`${url} 返回 HTTP ${response.status}`);
-                }
-                data = await response.json();
-                break;
-            } catch (err) {
-                lastError = err;
-            }
-        }
-
-        if (!data) {
-            throw lastError || new Error('无法读取数据文件');
-        }
-
-        allItems = Array.isArray(data.items) ? data.items : [];
-        updateSummary(data.meta || {});
-        hideLoading();
-        applyFilters();
-    } catch (error) {
-        console.error(error);
-        showError(`加载失败：${error.message || '未知错误'}`);
+        const data = await resp.json();
+        lastItems = Array.isArray(data.items) ? data.items : [];
+        renderCards(lastItems);
+        statusText.textContent = `搜索完成：${query}`;
+    } catch (err) {
+        console.error(err);
+        showError(`搜索失败：${err.message || "未知错误"}`);
     } finally {
-        refreshBtn.disabled = false;
+        setLoading(false);
     }
 }
 
-document.querySelectorAll('.tab').forEach((tab) => {
-    tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach((btn) => btn.classList.remove('active'));
-        tab.classList.add('active');
-        currentSource = tab.dataset.source;
-        applyFilters();
+async function playVideo(videoId) {
+    if (!videoId) return;
+    hideError();
+    setLoading(true);
+    try {
+        const infoResp = await fetch(`/api/video/${encodeURIComponent(videoId)}`);
+        if (!infoResp.ok) {
+            throw new Error(`HTTP ${infoResp.status}`);
+        }
+        const info = await infoResp.json();
+        const streamUrl = `/api/stream/${encodeURIComponent(videoId)}?format_id=${encodeURIComponent(info.default_format_id || "")}`;
+        videoPlayer.src = streamUrl;
+        videoPlayer.load();
+        playerTitle.textContent = info.title || "播放器";
+        playerMeta.textContent = `${info.uploader || "未知频道"} · 时长 ${info.duration || "未知"}`;
+        playerPanel.classList.remove("hidden");
+        videoPlayer.scrollIntoView({ behavior: "smooth", block: "center" });
+        statusText.textContent = `正在播放：${info.title || videoId}`;
+    } catch (err) {
+        console.error(err);
+        showError(`播放失败：${err.message || "未知错误"}`);
+    } finally {
+        setLoading(false);
+    }
+}
+
+searchForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const query = searchInput.value.trim();
+    if (!query) return;
+    await fetchSearch(query);
+});
+
+quickButtons.forEach((button) => {
+    button.addEventListener("click", async () => {
+        const query = button.dataset.query || "";
+        if (!query) return;
+        searchInput.value = query;
+        await fetchSearch(query);
     });
 });
 
-searchInputEl.addEventListener('input', () => {
-    currentKeyword = searchInputEl.value;
-    applyFilters();
+videoGrid.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.classList.contains("play-btn")) {
+        const videoId = target.dataset.id;
+        await playVideo(videoId);
+    }
 });
 
-clearSearchBtnEl.addEventListener('click', () => {
-    searchInputEl.value = '';
-    currentKeyword = '';
-    applyFilters();
+closePlayerBtn.addEventListener("click", () => {
+    videoPlayer.pause();
+    videoPlayer.removeAttribute("src");
+    videoPlayer.load();
+    playerPanel.classList.add("hidden");
+    playerMeta.textContent = "";
 });
 
-refreshBtn.addEventListener('click', () => window.location.reload());
-
-loadData();
+fetchSearch("热门音乐");
