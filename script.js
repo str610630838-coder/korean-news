@@ -10,6 +10,9 @@ const errorBox = document.getElementById("errorBox");
 
 let lastItems = [];
 const apiBase = getApiBase();
+const IA_CORS_URL = "https://cors.archive.org/advancedsearch.php";
+const IA_IMG_BASE = "https://archive.org/services/img/";
+const IA_DETAILS_BASE = "https://archive.org/details/";
 
 function getApiBase() {
     const queryApi = new URLSearchParams(window.location.search).get("api");
@@ -28,6 +31,68 @@ function getApiBase() {
 
 function buildApiUrl(path) {
     return `${apiBase}${path}`;
+}
+
+function normalizeMagazineEntry(doc) {
+    const identifier = doc.identifier || "";
+    let title = doc.title;
+    if (Array.isArray(title)) title = title[0] || "无标题";
+    title = title || "无标题";
+    let creator = doc.creator;
+    if (Array.isArray(creator)) creator = creator[0] || "未知";
+    creator = creator || "未知";
+    let date = doc.date;
+    if (Array.isArray(date)) date = date[0] || "";
+    date = date || "";
+    let description = doc.description;
+    if (Array.isArray(description)) description = description[0] || "";
+    description = (description || "").slice(0, 200);
+    let subject = doc.subject;
+    if (Array.isArray(subject)) subject = subject.slice(0, 5).join(", ");
+    subject = subject || "";
+    return {
+        id: identifier,
+        title,
+        creator,
+        date,
+        description,
+        subject,
+        thumbnail: identifier ? `${IA_IMG_BASE}${identifier}` : "",
+        webpage_url: identifier ? `${IA_DETAILS_BASE}${identifier}` : "",
+    };
+}
+
+async function searchViaCors(query, limit) {
+    const searchQuery1 = `collection:(periodicals OR magazine_rack) ${query}`;
+    const params1 = {
+        q: searchQuery1,
+        output: "json",
+        rows: limit,
+        fl: "identifier,title,creator,date,description,subject",
+        sort: "date desc",
+    };
+    const url1 = `${IA_CORS_URL}?${new URLSearchParams(params1)}`;
+    const resp1 = await fetch(url1);
+    if (!resp1.ok) throw new Error(`HTTP ${resp1.status}`);
+    const data1 = await resp1.json();
+    let docs = (data1.response || {}).docs || [];
+
+    if (docs.length === 0) {
+        const params2 = {
+            q: `mediatype:texts ${query}`,
+            output: "json",
+            rows: limit,
+            fl: "identifier,title,creator,date,description,subject",
+            sort: "date desc",
+        };
+        const url2 = `${IA_CORS_URL}?${new URLSearchParams(params2)}`;
+        const resp2 = await fetch(url2);
+        if (!resp2.ok) throw new Error(`HTTP ${resp2.status}`);
+        const data2 = await resp2.json();
+        docs = (data2.response || {}).docs || [];
+    }
+
+    return docs.filter((d) => d.identifier).map(normalizeMagazineEntry);
 }
 
 function escapeHtml(text) {
@@ -99,12 +164,16 @@ async function fetchSearch(query) {
     hideError();
     statusText.textContent = `正在搜索：${query}`;
     try {
-        const resp = await fetch(buildApiUrl(`/api/search?q=${encodeURIComponent(query)}&limit=18`));
-        if (!resp.ok) {
-            throw new Error(`HTTP ${resp.status}`);
+        let items;
+        if (apiBase) {
+            const resp = await fetch(buildApiUrl(`/api/search?q=${encodeURIComponent(query)}&limit=18`));
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            items = Array.isArray(data.items) ? data.items : [];
+        } else {
+            items = await searchViaCors(query, 18);
         }
-        const data = await resp.json();
-        lastItems = Array.isArray(data.items) ? data.items : [];
+        lastItems = items;
         renderCards(lastItems);
         statusText.textContent = `搜索完成：${query}`;
     } catch (err) {
@@ -131,10 +200,4 @@ quickButtons.forEach((button) => {
     });
 });
 
-const runningOnGithubPages = window.location.hostname.endsWith("github.io");
-if (runningOnGithubPages && !apiBase) {
-    statusText.textContent = "当前是 GitHub Pages 静态站，请先配置后端 API。";
-    showError("请在网址后追加 ?api=https://你的后端域名 ，例如：.../?api=https://your-backend.example.com");
-} else {
-    fetchSearch("Life Magazine");
-}
+fetchSearch("Life Magazine");

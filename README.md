@@ -1,19 +1,12 @@
-# YouTube 镜像站（FastAPI）
+# 历史杂志馆（History Hub）
 
-这是一个可直接部署的 YouTube 镜像站示例：
-
-- 前端：搜索页 + 播放器页（同域调用）
-- 后端：FastAPI + `yt-dlp`，提供搜索、详情、视频流代理
-- 目标：客户端只访问你自己的域名，不直接请求 YouTube 页面
-
-> 说明：本项目仅用于学习与技术演示，请遵守当地法律法规、平台服务条款与版权要求。
+从 Internet Archive 抓取与展示历史杂志，浏览百年期刊文献。
 
 ## 功能
 
-- 关键词搜索视频（`/api/search`）
-- 读取视频详情与可播放格式（`/api/video/{id}`）
-- 服务端代理视频流（`/api/stream/{id}`，支持 Range）
-- 简洁的中文前端界面（搜索、卡片列表、站内播放）
+- 关键词搜索历史杂志（`/api/search`）
+- 杂志详情（`/api/magazine/{id}`）
+- 简洁中文前端：搜索、卡片列表、在线阅读跳转 Internet Archive
 
 ## 项目结构
 
@@ -49,34 +42,17 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 ## API 简要
 
 - `GET /api/health` 健康检查
-- `GET /api/search?q=关键词&limit=18`
-- `GET /api/video/{video_id}`
-- `GET /api/stream/{video_id}?format_id=18`
+- `GET /api/search?q=关键词&limit=18` 搜索杂志
+- `GET /api/magazine/{identifier}` 杂志详情
 
-## 部署建议
+## GitHub Pages 说明
 
-推荐部署到支持 Python 长连接流式响应的平台（如云服务器 / 容器平台）：
-
-- 使用 Nginx/Caddy 做反向代理
-- 打开 HTTPS（必须）
-- 为 `/api/stream/*` 设置更高超时时间
-- 视并发配置带宽与缓存策略
-
-## GitHub Pages 说明（已修复）
-
-本仓库已包含 `.github/workflows/deploy-pages.yml`，推送后会自动发布静态前端到 Pages。
+本仓库包含 `.github/workflows/deploy-pages.yml`，推送后会自动发布静态前端到 Pages。
 
 - 项目页地址通常为：`https://<username>.github.io/<repo>/`
-- 本项目中即：`https://str610630838-coder.github.io/youtube/`
+- GitHub Pages 仅托管静态文件，无后端。前端已内置 **CORS 直连回退**：未配置后端时，自动调用 Internet Archive 的 `cors.archive.org` 接口，搜索功能可正常使用。
+- 若自建后端，可在网址后追加 `?api=https://你的后端域名` 以使用自有 API。
 
-注意：GitHub Pages 只能托管静态文件，不能运行 FastAPI 后端。  
-因此在 Pages 上访问时，需要指定后端地址：
+## 数据来源
 
-`https://str610630838-coder.github.io/youtube/?api=https://你的后端域名`
-
-## 一键容器启动（可选）
-
-```bash
-docker build -t youtube-mirror .
-docker run -p 8000:8000 youtube-mirror
-```
+数据来源于 [Internet Archive](https://archive.org)，仅供学习与研究，请遵守版权法规。
