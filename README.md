@@ -62,6 +62,18 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 - 为 `/api/stream/*` 设置更高超时时间
 - 视并发配置带宽与缓存策略
 
+## GitHub Pages 说明（已修复）
+
+本仓库已包含 `.github/workflows/deploy-pages.yml`，推送后会自动发布静态前端到 Pages。
+
+- 项目页地址通常为：`https://<username>.github.io/<repo>/`
+- 本项目中即：`https://str610630838-coder.github.io/youtube/`
+
+注意：GitHub Pages 只能托管静态文件，不能运行 FastAPI 后端。  
+因此在 Pages 上访问时，需要指定后端地址：
+
+`https://str610630838-coder.github.io/youtube/?api=https://你的后端域名`
+
 ## 一键容器启动（可选）
 
 ```bash

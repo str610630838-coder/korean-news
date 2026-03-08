@@ -14,6 +14,26 @@ const videoPlayer = document.getElementById("videoPlayer");
 const closePlayerBtn = document.getElementById("closePlayerBtn");
 
 let lastItems = [];
+const apiBase = getApiBase();
+
+function getApiBase() {
+    const queryApi = new URLSearchParams(window.location.search).get("api");
+    if (queryApi) {
+        const normalized = queryApi.replace(/\/+$/, "");
+        window.localStorage.setItem("youtube_api_base", normalized);
+        return normalized;
+    }
+
+    const stored = window.localStorage.getItem("youtube_api_base");
+    if (stored) {
+        return stored.replace(/\/+$/, "");
+    }
+    return "";
+}
+
+function buildApiUrl(path) {
+    return `${apiBase}${path}`;
+}
 
 function escapeHtml(text) {
     const div = document.createElement("div");
@@ -77,7 +97,7 @@ async function fetchSearch(query) {
     hideError();
     statusText.textContent = `正在搜索：${query}`;
     try {
-        const resp = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=18`);
+        const resp = await fetch(buildApiUrl(`/api/search?q=${encodeURIComponent(query)}&limit=18`));
         if (!resp.ok) {
             throw new Error(`HTTP ${resp.status}`);
         }
@@ -98,12 +118,12 @@ async function playVideo(videoId) {
     hideError();
     setLoading(true);
     try {
-        const infoResp = await fetch(`/api/video/${encodeURIComponent(videoId)}`);
+        const infoResp = await fetch(buildApiUrl(`/api/video/${encodeURIComponent(videoId)}`));
         if (!infoResp.ok) {
             throw new Error(`HTTP ${infoResp.status}`);
         }
         const info = await infoResp.json();
-        const streamUrl = `/api/stream/${encodeURIComponent(videoId)}?format_id=${encodeURIComponent(info.default_format_id || "")}`;
+        const streamUrl = buildApiUrl(`/api/stream/${encodeURIComponent(videoId)}?format_id=${encodeURIComponent(info.default_format_id || "")}`);
         videoPlayer.src = streamUrl;
         videoPlayer.load();
         playerTitle.textContent = info.title || "播放器";
@@ -152,4 +172,10 @@ closePlayerBtn.addEventListener("click", () => {
     playerMeta.textContent = "";
 });
 
-fetchSearch("热门音乐");
+const runningOnGithubPages = window.location.hostname.endsWith("github.io");
+if (runningOnGithubPages && !apiBase) {
+    statusText.textContent = "当前是 GitHub Pages 静态站，请先配置后端 API。";
+    showError("请在网址后追加 ?api=https://你的后端域名 ，例如：.../youtube/?api=https://your-backend.example.com");
+} else {
+    fetchSearch("热门音乐");
+}
