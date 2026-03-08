@@ -14,6 +14,7 @@ const videoPlayer = document.getElementById("videoPlayer");
 const closePlayerBtn = document.getElementById("closePlayerBtn");
 
 let lastItems = [];
+let currentQuery = "";
 const apiBase = getApiBase();
 
 function getApiBase() {
@@ -109,6 +110,7 @@ async function fetchJson(url) {
 async function fetchSearch(query) {
     setLoading(true);
     hideError();
+    currentQuery = query;
     statusText.textContent = `正在搜索：${query}`;
     try {
         const data = await fetchJson(buildApiUrl(`/api/search?q=${encodeURIComponent(query)}&limit=18`));
@@ -123,13 +125,21 @@ async function fetchSearch(query) {
     }
 }
 
-async function playVideo(videoId) {
+async function playVideo(videoId, attempted = new Set()) {
     if (!videoId) return;
+    attempted.add(videoId);
     hideError();
     setLoading(true);
     try {
         const info = await fetchJson(buildApiUrl(`/api/video/${encodeURIComponent(videoId)}`));
         if (info.blocked) {
+            statusText.textContent = "当前视频受限，正在自动尝试其他结果...";
+            const fallback = await findPlayableAlternative(videoId, attempted);
+            if (fallback) {
+                showError(`当前视频受限，已自动切换到可播放视频：${fallback.title}`);
+                await playVideo(fallback.id, attempted);
+                return;
+            }
             showError(`播放受限：${info.reason || "该视频当前不可播放，请换一个视频。"} `);
             return;
         }
@@ -152,6 +162,28 @@ async function playVideo(videoId) {
     } finally {
         setLoading(false);
     }
+}
+
+async function findPlayableAlternative(blockedVideoId, attempted = new Set()) {
+    const blockedIndex = lastItems.findIndex((item) => item.id === blockedVideoId);
+    const rotated = blockedIndex >= 0
+        ? [...lastItems.slice(blockedIndex + 1), ...lastItems.slice(0, blockedIndex)]
+        : [...lastItems];
+
+    const candidates = rotated.slice(0, 8);
+    for (const item of candidates) {
+        if (!item?.id || item.id === blockedVideoId) continue;
+        if (attempted.has(item.id)) continue;
+        try {
+            const info = await fetchJson(buildApiUrl(`/api/video/${encodeURIComponent(item.id)}`));
+            if (!info.blocked) {
+                return { id: item.id, title: info.title || item.title || item.id };
+            }
+        } catch (_) {
+            // ignore and try next candidate
+        }
+    }
+    return null;
 }
 
 searchForm.addEventListener("submit", async (event) => {
