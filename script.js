@@ -92,16 +92,26 @@ function renderCards(items) {
     resultCount.textContent = String(items.length);
 }
 
+async function fetchJson(url) {
+    const resp = await fetch(url);
+    let data = null;
+    try {
+        data = await resp.json();
+    } catch (_) {
+        data = null;
+    }
+    if (!resp.ok) {
+        throw new Error(data?.detail || `HTTP ${resp.status}`);
+    }
+    return data;
+}
+
 async function fetchSearch(query) {
     setLoading(true);
     hideError();
     statusText.textContent = `正在搜索：${query}`;
     try {
-        const resp = await fetch(buildApiUrl(`/api/search?q=${encodeURIComponent(query)}&limit=18`));
-        if (!resp.ok) {
-            throw new Error(`HTTP ${resp.status}`);
-        }
-        const data = await resp.json();
+        const data = await fetchJson(buildApiUrl(`/api/search?q=${encodeURIComponent(query)}&limit=18`));
         lastItems = Array.isArray(data.items) ? data.items : [];
         renderCards(lastItems);
         statusText.textContent = `搜索完成：${query}`;
@@ -118,11 +128,11 @@ async function playVideo(videoId) {
     hideError();
     setLoading(true);
     try {
-        const infoResp = await fetch(buildApiUrl(`/api/video/${encodeURIComponent(videoId)}`));
-        if (!infoResp.ok) {
-            throw new Error(`HTTP ${infoResp.status}`);
+        const info = await fetchJson(buildApiUrl(`/api/video/${encodeURIComponent(videoId)}`));
+        if (info.blocked) {
+            showError(`播放受限：${info.reason || "该视频当前不可播放，请换一个视频。"} `);
+            return;
         }
-        const info = await infoResp.json();
         const streamUrl = buildApiUrl(`/api/stream/${encodeURIComponent(videoId)}?format_id=${encodeURIComponent(info.default_format_id || "")}`);
         videoPlayer.src = streamUrl;
         videoPlayer.load();
@@ -133,7 +143,12 @@ async function playVideo(videoId) {
         statusText.textContent = `正在播放：${info.title || videoId}`;
     } catch (err) {
         console.error(err);
-        showError(`播放失败：${err.message || "未知错误"}`);
+        const message = String(err.message || "未知错误");
+        if (message.includes("风控") || message.toLowerCase().includes("not a bot")) {
+            showError(`播放失败：${message}`);
+        } else {
+            showError(`播放失败：${message}`);
+        }
     } finally {
         setLoading(false);
     }
@@ -177,5 +192,5 @@ if (runningOnGithubPages && !apiBase) {
     statusText.textContent = "当前是 GitHub Pages 静态站，请先配置后端 API。";
     showError("请在网址后追加 ?api=https://你的后端域名 ，例如：.../youtube/?api=https://your-backend.example.com");
 } else {
-    fetchSearch("热门音乐");
+    fetchSearch("编程教程");
 }

@@ -1,4 +1,5 @@
 import asyncio
+import os
 import time
 from typing import Any
 
@@ -11,8 +12,42 @@ from yt_dlp import YoutubeDL
 app = FastAPI(title="YouTube Mirror", version="1.0.0")
 
 HTTP_CLIENT = httpx.AsyncClient(timeout=60.0, follow_redirects=True)
-STREAM_CACHE_TTL_SECONDS = 10 * 60
+STREAM_CACHE_TTL_SECONDS = 2 * 60
 stream_cache: dict[str, dict[str, Any]] = {}
+NODE_RUNTIME_PATH = os.getenv("YTDLP_NODE_PATH", "/usr/local/lighthouse/softwares/nodejs/node/bin/node")
+POT_PROVIDER_BASE_URL = os.getenv("YTDLP_POT_PROVIDER_URL", "http://127.0.0.1:4416")
+YTDLP_COOKIE_FILE = os.getenv("YTDLP_COOKIE_FILE", "").strip()
+
+
+def _video_ydl_opts() -> dict[str, Any]:
+    opts: dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        # Required by many videos to decode signed formats correctly
+        "js_runtimes": {"node": {"path": NODE_RUNTIME_PATH}},
+        "remote_components": ["ejs:github"],
+        "extractor_args": {
+            "youtube": {
+                "fetch_pot": ["always"],
+                "player_client": ["mweb"],
+            },
+            "youtubepot-bgutilhttp": {
+                "base_url": [POT_PROVIDER_BASE_URL],
+            },
+        },
+    }
+    if YTDLP_COOKIE_FILE:
+        opts["cookiefile"] = YTDLP_COOKIE_FILE
+    return opts
+
+
+def _friendly_extract_error(exc: Exception) -> str:
+    message = str(exc)
+    lower = message.lower()
+    if "not a bot" in lower or "sign in to confirm" in lower or "login_required" in lower:
+        return "该视频触发 YouTube 风控，当前无法直连解析。请换一个视频，或在服务器配置 YTDLP_COOKIE_FILE。"
+    return message
 
 
 def _pick_thumbnail(entry: dict[str, Any]) -> str:
@@ -98,11 +133,7 @@ def _pick_stream_format(formats: list[dict[str, Any]], format_id: str | None) ->
 
 
 def _video_info_sync(video_id: str) -> dict[str, Any]:
-    opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-    }
+    opts = _video_ydl_opts()
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False) or {}
 
@@ -142,11 +173,7 @@ def _video_info_sync(video_id: str) -> dict[str, Any]:
 
 
 def _resolve_stream_sync(video_id: str, format_id: str | None) -> dict[str, Any]:
-    opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-    }
+    opts = _video_ydl_opts()
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False) or {}
     selected = _pick_stream_format(info.get("formats") or [], format_id)
@@ -195,12 +222,21 @@ async def video_info(video_id: str) -> JSONResponse:
         info = await asyncio.to_thread(_video_info_sync, video_id)
         return JSONResponse(info)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"获取视频信息失败：{exc}") from exc
+        return JSONResponse(
+            {
+                "id": video_id,
+                "blocked": True,
+                "reason": _friendly_extract_error(exc),
+            }
+        )
 
 
 @app.get("/api/stream/{video_id}")
 async def stream_video(video_id: str, request: Request, format_id: str | None = None) -> StreamingResponse:
-    resolved = await resolve_stream(video_id, format_id)
+    try:
+        resolved = await resolve_stream(video_id, format_id)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"解析播放地址失败：{_friendly_extract_error(exc)}") from exc
     headers: dict[str, str] = {}
     if request.headers.get("range"):
         headers["Range"] = request.headers["range"]
@@ -212,6 +248,13 @@ async def stream_video(video_id: str, request: Request, format_id: str | None = 
 
     req = HTTP_CLIENT.build_request("GET", resolved["url"], headers=headers)
     upstream = await HTTP_CLIENT.send(req, stream=True)
+    if upstream.status_code in (401, 403, 410):
+        # Signed video URLs may expire quickly; refresh once before failing.
+        await upstream.aclose()
+        stream_cache.pop(f"{video_id}:{format_id or ''}", None)
+        refreshed = await resolve_stream(video_id, format_id)
+        req = HTTP_CLIENT.build_request("GET", refreshed["url"], headers=headers)
+        upstream = await HTTP_CLIENT.send(req, stream=True)
     if upstream.status_code >= 400:
         body = (await upstream.aread())[:200]
         await upstream.aclose()

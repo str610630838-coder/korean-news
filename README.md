@@ -53,6 +53,22 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 - `GET /api/video/{video_id}`
 - `GET /api/stream/{video_id}?format_id=18`
 
+## 播放 502（YouTube 风控）说明
+
+YouTube 对机房 IP 会触发反爬校验，常见报错为 `Sign in to confirm you're not a bot`。  
+本项目已内置：
+
+- `PO Token` 支持（`bgutil-ytdlp-pot-provider`）
+- JS challenge 组件（`remote_components: ejs:github`）
+
+如果仍遇到个别视频 502，可在服务端配置：
+
+```bash
+export YTDLP_COOKIE_FILE=/path/to/youtube-cookies.txt
+```
+
+然后重启服务。不同视频风控强度不同，出现“个别不可播”属于上游限制现象。
+
 ## 部署建议
 
 推荐部署到支持 Python 长连接流式响应的平台（如云服务器 / 容器平台）：
