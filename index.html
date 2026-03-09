@@ -1,110 +1,42 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>历史文献馆 - 从 Project Gutenberg 探索百年经典</title>
-  <meta name="description" content="从 Project Gutenberg 抓取与展示百年历史刊物与资料，探索无尽的公版宝库。" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@400;600&display=swap"
-    rel="stylesheet" />
+  <title>History Hub · 历史杂志档案</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
-
 <body>
-  <header class="header">
-    <h1>📜 历史文献馆</h1>
-    <p>从 Project Gutenberg 古腾堡计划探索公版典籍，点击直达原页，完美支持沉浸式翻译</p>
+  <header class="container hero">
+    <h1>History Hub</h1>
+    <p>历史杂志抓取与静态展示站</p>
   </header>
 
   <main class="container">
-    <!-- 标签导航 -->
-    <div class="tab-nav">
-      <button class="tab-btn active" data-tab="search">🔍 搜索</button>
-      <button class="tab-btn" data-tab="bookshelf">
-        📚 我的书架
-        <span id="shelfCount" class="shelf-badge" style="display:none">0</span>
-      </button>
-      <button class="tab-btn" data-tab="local-reader">📖 站内阅读器</button>
-    </div>
-
-    <!-- 搜索标签页 -->
-    <section id="tab-search" class="tab-content active search-panel">
-      <form id="searchForm">
-        <input id="searchInput" type="search" placeholder="输入关键词，例如：Magazine / History / Science"
-          autocomplete="off" />
-        <button id="searchBtn" type="submit">搜索文献</button>
-      </form>
-      <div class="quick-actions">
-        <button class="quick-btn" type="button" data-query="Magazine">Magazine</button>
-        <button class="quick-btn" type="button" data-query="History">History</button>
-        <button class="quick-btn" type="button" data-query="Science">Science</button>
-      </div>
-      <div class="status-row">
-        <span id="statusText">准备搜索</span>
-        <span>结果数：<strong id="resultCount">0</strong></span>
-      </div>
-      <div id="loading" class="loading hidden">加载中...</div>
-      <div id="errorBox" class="error hidden"></div>
-      <div id="magazineGrid" class="magazine-grid"></div>
+    <section class="toolbar">
+      <input id="q" type="search" placeholder="搜索标题、主题、年份（例如：china / 1912）" />
+      <button id="reloadBtn">刷新数据说明</button>
     </section>
 
-    <!-- 书架标签页 -->
-    <section id="tab-bookshelf" class="tab-content search-panel">
-      <div class="shelf-header">
-        <h2>我的书架</h2>
-        <span id="shelfStatus" class="shelf-status"></span>
-      </div>
-      <div id="shelfGrid" class="magazine-grid"></div>
-    </section>
+    <p class="hint">
+      数据来源：Internet Archive 元数据。<br />
+      首次部署后，请运行 <code>python scripts/fetch_magazines.py</code> 生成/更新 <code>data/magazines.json</code>。
+    </p>
 
-    <!-- 站内阅读器标签页 -->
-    <section id=”tab-local-reader” class=”tab-content reader-panel”>
-
-      <!-- 工具栏：书名 + 字号控制 + 清空 -->
-      <div class=”reader-toolbar”>
-        <span id=”readerBookLabel” class=”reader-book-label”>站内阅读器</span>
-        <div class=”reader-toolbar-end”>
-          <button id=”readerFontDecBtn” class=”reader-ctrl-btn” type=”button”
-                  title=”缩小字号” aria-label=”缩小字号”>A−</button>
-          <button id=”readerFontIncBtn” class=”reader-ctrl-btn” type=”button”
-                  title=”放大字号” aria-label=”放大字号”>A+</button>
-          <button id=”clearLocalReaderBtn” class=”reader-ctrl-btn reader-ctrl-btn--ghost”
-                  type=”button” title=”清空阅读内容” aria-label=”清空阅读内容”>✕</button>
-        </div>
-      </div>
-
-      <!-- 状态条 -->
-      <div id=”localReaderStatus” class=”reader-status-bar”>尚未打开书籍</div>
-
-      <!-- 书籍元数据（作者 + 原页链接），有书时才显示 -->
-      <div id=”localReaderMeta” class=”reader-meta hidden”>
-        <span id=”readerMetaCreator” class=”reader-meta-creator”></span>
-        <a id=”readerMetaLink” class=”reader-meta-link”
-           href=”#” target=”_blank” rel=”noopener noreferrer” hidden>查看 Gutenberg 原页</a>
-      </div>
-
-      <!-- 阅读进度条 -->
-      <div id=”readerProgressWrap” class=”reader-progress-wrap hidden”>
-        <div id=”readerProgressBar” class=”reader-progress-fill”></div>
-      </div>
-
-      <!-- 正文区域（<article> 保证沉浸式翻译插件可识别） -->
-      <article id=”localReaderContent” class=”reader-body”>
-        <p class=”reader-placeholder”>请在搜索结果或书架中点击”🧾 站内阅读”开始阅读。</p>
-      </article>
-
-    </section>
+    <section id="stats" class="stats"></section>
+    <section id="grid" class="grid"></section>
   </main>
 
-  <footer class="footer">
-    数据来源于 Project Gutenberg，可直达原页，也可在站内阅读模式下配合沉浸式翻译插件使用。
-  </footer>
+  <template id="cardTpl">
+    <article class="card">
+      <h3 class="title"></h3>
+      <p class="meta"></p>
+      <p class="desc"></p>
+      <div class="tags"></div>
+      <a class="link" target="_blank" rel="noopener noreferrer">查看原始条目</a>
+    </article>
+  </template>
 
   <script src="script.js"></script>
 </body>
-
 </html>
