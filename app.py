@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 GUTENDEX_API_URL = "https://gutendex.com/books/"
 
@@ -132,6 +132,11 @@ async def index() -> FileResponse:
     return FileResponse("index.html")
 
 
+@app.get("/index.html", include_in_schema=False)
+async def index_html() -> FileResponse:
+    return FileResponse("index.html")
+
+
 @app.get("/styles.css", include_in_schema=False)
 async def styles() -> FileResponse:
     return FileResponse("styles.css")
@@ -140,3 +145,9 @@ async def styles() -> FileResponse:
 @app.get("/script.js", include_in_schema=False)
 async def script() -> FileResponse:
     return FileResponse("script.js")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> Response:
+    # 返回空的 favicon 避免浏览器 404
+    return Response(content=b"", media_type="image/x-icon", status_code=204)
