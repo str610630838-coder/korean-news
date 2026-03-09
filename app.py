@@ -100,8 +100,19 @@ class _VisibleTextExtractor(HTMLParser):
     def get_text(self) -> str:
         raw = unescape("".join(self._parts))
         lines = [" ".join(line.split()) for line in raw.splitlines()]
-        text = "\n".join(line for line in lines if line)
-        return text.strip()
+        # Preserve one empty line between paragraphs (gives \n\n separator that the
+        # frontend normalizeReaderText relies on for paragraph splitting), but
+        # collapse any run of multiple consecutive blank lines into a single one.
+        result: list[str] = []
+        prev_empty = False
+        for line in lines:
+            if line:
+                result.append(line)
+                prev_empty = False
+            elif not prev_empty:
+                result.append("")
+                prev_empty = True
+        return "\n".join(result).strip()
 
 
 async def _fetch_magazine_doc(identifier: str) -> dict[str, Any]:
@@ -196,13 +207,19 @@ async def magazine_read(identifier: str) -> JSONResponse:
     try:
         resp = await HTTP_CLIENT.get(source_url)
         resp.raise_for_status()
+        # Decode with the charset declared by the server; fall back to Latin-1
+        # (which never raises for arbitrary bytes) if the declared charset fails.
+        try:
+            raw_text = resp.text or ""
+        except (UnicodeDecodeError, LookupError):
+            raw_text = resp.content.decode("latin-1", errors="replace")
+        content = _normalize_read_text(raw_text, source_format)
+    except HTTPException:
+        raise
     except httpx.HTTPStatusError as exc:
         raise HTTPException(status_code=502, detail=f"正文获取失败: {exc}") from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"正文获取失败: {exc}") from exc
-
-    raw_text = resp.text or ""
-    content = _normalize_read_text(raw_text, source_format)
     if not content:
         raise HTTPException(status_code=404, detail="该书籍暂无可显示正文")
 
