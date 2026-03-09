@@ -10,6 +10,13 @@ const readerFrame = document.getElementById('readerFrame');
 const readerTitle = document.getElementById('readerTitle');
 const closeReaderBtn = document.getElementById('closeReaderBtn');
 const readerLoader = document.getElementById('readerLoader');
+const epubViewer = document.getElementById('epubViewer');
+const epubArea = document.getElementById('epubArea');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+
+let currentBook = null;
+let currentRendition = null;
 
 let allItems = [];
 let showOnlyBookshelf = false;
@@ -103,7 +110,7 @@ function render() {
 
     // 站内阅读按钮
     const readBtn = node.querySelector('.read-btn');
-    readBtn.addEventListener('click', () => openReader(item.title, item.url));
+    readBtn.addEventListener('click', () => openReader(item.title, item.url, item.isEpub));
 
     // 外部链接
     const link = node.querySelector('.link');
@@ -113,21 +120,59 @@ function render() {
   });
 }
 
-function openReader(title, url) {
+function openReader(title, url, isEpub) {
   readerTitle.textContent = title;
   readerLoader.style.display = 'flex'; // 显示加载动画
-  
-  // 监听 iframe 加载完成事件
-  readerFrame.onload = function() {
-    readerLoader.style.display = 'none'; // 隐藏加载动画
-  };
-  
-  readerFrame.src = url;
   readerModal.classList.add('open');
+
+  // 清除之前的电子书实例
+  if (currentBook) {
+    currentBook.destroy();
+    currentBook = null;
+  }
+  epubArea.innerHTML = '';
+  
+  if (isEpub) {
+    // 使用 ePub.js 渲染分章阅读体验
+    readerFrame.style.display = 'none';
+    epubViewer.style.display = 'block';
+    
+    currentBook = ePub(url);
+    currentRendition = currentBook.renderTo(epubArea, {
+      width: "100%",
+      height: "100%",
+      spread: "none"
+    });
+    
+    currentRendition.display().then(() => {
+      readerLoader.style.display = 'none'; // 隐藏加载动画
+    }).catch(err => {
+      console.error(err);
+      readerLoader.querySelector('p').textContent = 'EPUB 加载失败，请尝试外部打开。';
+    });
+
+    prevBtn.onclick = () => { if (currentRendition) currentRendition.prev(); };
+    nextBtn.onclick = () => { if (currentRendition) currentRendition.next(); };
+    
+  } else {
+    // 降级：使用 iframe 渲染网页（全量加载）
+    epubViewer.style.display = 'none';
+    readerFrame.style.display = 'block';
+    
+    readerFrame.onload = function() {
+      readerLoader.style.display = 'none'; // 隐藏加载动画
+    };
+    readerFrame.src = url;
+  }
 }
 
 closeReaderBtn.addEventListener('click', () => {
   readerModal.classList.remove('open');
+  if (currentBook) {
+    currentBook.destroy();
+    currentBook = null;
+  }
+  epubArea.innerHTML = '';
   readerFrame.onload = null; // 清理事件
   readerFrame.src = ''; // 清空 iframe，停止加载
 });

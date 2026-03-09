@@ -27,10 +27,15 @@ def fetch_rows(target_count: int = 150) -> list[dict]:
             
             description = f"Author(s): {', '.join(authors)}" if authors else "No author info"
             
-            # 提取 HTML 格式用于在线阅读
+            # 提取 EPUB 格式用于分章在线阅读
             formats = d.get("formats", {})
+            epub_url = formats.get("application/epub+zip")
             html_url = formats.get("text/html") or formats.get("text/html; charset=utf-8")
-            read_url = html_url if html_url else f"https://www.gutenberg.org/ebooks/{ident}"
+            
+            # 优先使用 EPUB，如果没有再降级到 HTML
+            read_url = epub_url if epub_url else html_url
+            if not read_url:
+                read_url = f"https://www.gutenberg.org/ebooks/{ident}"
                 
             items.append({
                 "identifier": ident,
@@ -38,7 +43,8 @@ def fetch_rows(target_count: int = 150) -> list[dict]:
                 "year": "N/A",
                 "subject": subjects[:10],
                 "description": description,
-                "url": read_url
+                "url": read_url,
+                "isEpub": bool(epub_url)
             })
             if len(items) >= target_count:
                 break

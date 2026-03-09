@@ -40,7 +40,12 @@
           <div class="spinner"></div>
           <p>努力加载中，请稍候...</p>
         </div>
-        <iframe id="readerFrame" src="" frameborder="0"></iframe>
+        <div id="epubViewer" style="display:none; width: 100%; height: 100%; position: relative;">
+          <div id="epubArea" style="width: 100%; height: 100%;"></div>
+          <button id="prevBtn" class="nav-btn prev-btn">❮</button>
+          <button id="nextBtn" class="nav-btn next-btn">❯</button>
+        </div>
+        <iframe id="readerFrame" src="" frameborder="0" style="display:none;"></iframe>
       </div>
     </div>
   </div>
@@ -58,6 +63,10 @@
       </div>
     </article>
   </template>
+
+  <!-- 引入 ePub.js 和 JSZip 依赖 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>
 
   <script src="script.js"></script>
 </body>
