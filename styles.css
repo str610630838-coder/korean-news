@@ -488,7 +488,7 @@ body {
 
 /* ══════════════ 全屏阅读器 ══════════════ */
 
-.reader-modal {
+.reader-view {
   position: fixed;
   inset: 0;
   z-index: 1000;
