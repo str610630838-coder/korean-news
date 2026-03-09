@@ -9,9 +9,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
-IA_SEARCH_URL = "https://archive.org/advancedsearch.php"
-IA_IMG_BASE = "https://archive.org/services/img/"
-IA_DETAILS_BASE = "https://archive.org/details/"
+GUTENDEX_API_URL = "https://gutendex.com/books/"
 
 HTTP_CLIENT: httpx.AsyncClient
 
@@ -35,31 +33,30 @@ app.add_middleware(
 
 
 def _normalize_magazine_entry(doc: dict[str, Any]) -> dict[str, Any]:
-    """将 Internet Archive 文档转为前端使用的格式"""
-    identifier = doc.get("identifier") or ""
-    title = doc.get("title")
-    if isinstance(title, list):
-        title = title[0] if title else "无标题"
-    title = title or "无标题"
-    creator = doc.get("creator")
-    if isinstance(creator, list):
-        creator = creator[0] if creator else "未知"
-    creator = creator or "未知"
-    date = doc.get("date")
-    if isinstance(date, list):
-        date = date[0] if date else ""
-    date = date or ""
-    description = doc.get("description")
-    if isinstance(description, list):
-        description = description[0] if description else ""
-    description = (description or "")[:200]
-    subject = doc.get("subject")
-    if isinstance(subject, list):
-        subject = ", ".join(str(s) for s in subject[:5]) if subject else ""
-    subject = subject or ""
-
-    cover = f"{IA_IMG_BASE}{identifier}" if identifier else ""
-    details_url = f"{IA_DETAILS_BASE}{identifier}" if identifier else ""
+    """将 古腾堡 (Gutendex) 返回的书籍转为前端使用的统一格式"""
+    identifier = str(doc.get("id", ""))
+    title = doc.get("title", "无标题")
+    
+    authors = doc.get("authors", [])
+    creator = authors[0].get("name", "未知") if authors else "未知"
+    
+    # 尽可能将古腾堡标签转成字符串展示（古腾堡的 subjects 通常很长，取前三个）
+    subjects = doc.get("subjects", [])
+    subject = ", ".join(s.split("--")[-1].strip() for s in subjects[:3]) if subjects else ""
+    
+    description = f"下载量: {doc.get('download_count', 0)} | 语言: {', '.join(doc.get('languages', []))}"
+    
+    formats = doc.get("formats", {})
+    # 尽可能拿高质量封面
+    cover = formats.get("image/jpeg", "")
+    
+    # 核心目标：拒绝 PDF。取纯 HTML 在线阅读链接，没有则退化拿 txt
+    webpage_url = formats.get("text/html", "") or formats.get("text/plain; charset=utf-8", "")
+    if not webpage_url:
+        webpage_url = f"https://www.gutenberg.org/ebooks/{identifier}"
+    
+    # 古腾堡 API 不返回具体发布日期，我们只能借用下载次数或者留空
+    date = ""
 
     return {
         "id": identifier,
@@ -69,47 +66,27 @@ def _normalize_magazine_entry(doc: dict[str, Any]) -> dict[str, Any]:
         "description": description,
         "subject": subject,
         "thumbnail": cover,
-        "webpage_url": details_url,
+        "webpage_url": webpage_url,
     }
 
 
 async def _search_magazines(query: str, limit: int) -> list[dict[str, Any]]:
-    """从 Internet Archive 搜索历史杂志"""
-    # 搜索 periodicals 集合，并加入用户关键词
-    search_query = f"collection:(periodicals OR magazine_rack) {query}"
+    """从 Project Gutenberg 搜索历史刊物及文献"""
     params = {
-        "q": search_query,
-        "output": "json",
-        "rows": limit,
-        "fl": "identifier,title,creator,date,description,subject",
-        "sort": "date desc",
+        "search": query,
     }
     try:
-        resp = await HTTP_CLIENT.get(IA_SEARCH_URL, params=params)
+        resp = await HTTP_CLIENT.get(GUTENDEX_API_URL, params=params)
         resp.raise_for_status()
         data = resp.json()
     except Exception as exc:
-        raise RuntimeError(f"Internet Archive 请求失败: {exc}") from exc
+        raise RuntimeError(f"Gutendex API 请求失败: {exc}") from exc
 
-    docs = data.get("response", {}).get("docs", [])
-    if not docs:
-        # 若 periodicals 无结果，尝试 broader texts 搜索
-        fallback_params = {
-            "q": f"mediatype:texts {query}",
-            "output": "json",
-            "rows": limit,
-            "fl": "identifier,title,creator,date,description,subject",
-            "sort": "date desc",
-        }
-        try:
-            resp = await HTTP_CLIENT.get(IA_SEARCH_URL, params=fallback_params)
-            resp.raise_for_status()
-            data = resp.json()
-            docs = data.get("response", {}).get("docs", [])
-        except Exception as exc:
-            raise RuntimeError(f"Internet Archive 备用搜索失败: {exc}") from exc
+    results = data.get("results", [])
+    # 截取所需数量的结果
+    docs = results[:limit]
 
-    return [_normalize_magazine_entry(d) for d in docs if d.get("identifier")]
+    return [_normalize_magazine_entry(d) for d in docs if d.get("id")]
 
 
 @app.get("/api/health")
@@ -131,40 +108,23 @@ async def search_magazines(
 
 @app.get("/api/magazine/{identifier}")
 async def magazine_info(identifier: str) -> JSONResponse:
-    """获取单本杂志的详情（可选，用于详情页）"""
-    url = f"https://archive.org/metadata/{identifier}"
+    """获取单本古腾堡文档详情"""
+    url = f"{GUTENDEX_API_URL}?ids={identifier}"
     try:
         resp = await HTTP_CLIENT.get(url)
         resp.raise_for_status()
         data = resp.json()
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code == 404:
-            raise HTTPException(status_code=404, detail=f"杂志不存在: {identifier}") from exc
-        raise HTTPException(status_code=502, detail=f"获取杂志详情失败: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"获取详情失败: {exc}") from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"获取杂志详情失败: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"获取详情失败: {exc}") from exc
 
-    metadata = data.get("metadata", {})
-    if not metadata:
-        raise HTTPException(status_code=404, detail=f"杂志不存在: {identifier}")
-    title = metadata.get("title", "无标题")
-    creator = metadata.get("creator", "未知")
-    date = metadata.get("date", "")
-    description = metadata.get("description", "")
-    if isinstance(description, list):
-        description = description[0] if description else ""
-    cover = f"{IA_IMG_BASE}{identifier}"
-    details_url = f"{IA_DETAILS_BASE}{identifier}"
-
-    return JSONResponse({
-        "id": identifier,
-        "title": title,
-        "creator": creator,
-        "date": date,
-        "description": description,
-        "thumbnail": cover,
-        "webpage_url": details_url,
-    })
+    results = data.get("results", [])
+    if not results:
+        raise HTTPException(status_code=404, detail=f"文档不存在: {identifier}")
+        
+    doc = results[0]
+    return JSONResponse(_normalize_magazine_entry(doc))
 
 
 @app.get("/", include_in_schema=False)

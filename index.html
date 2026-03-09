@@ -1,31 +1,35 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>历史杂志馆 - 从 Internet Archive 探索百年期刊</title>
-  <meta name="description" content="从 Internet Archive 抓取与展示百年历史杂志，探索期刊文献宝库。搜索 Life Magazine、National Geographic、民国期刊等历史珍贵刊物。" />
+  <title>历史文献馆 - 从 Project Gutenberg 探索百年经典</title>
+  <meta name="description" content="从 Project Gutenberg 抓取与展示百年历史刊物与资料，探索无尽的公版宝库。" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@400;600&display=swap" rel="stylesheet" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@400;600&display=swap"
+    rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
+
 <body>
   <header class="header">
-    <h1>历史杂志馆</h1>
-    <p>从 Internet Archive 抓取与展示百年历史杂志，探索期刊文献宝库。</p>
+    <h1>历史文献馆</h1>
+    <p>从 Project Gutenberg (古腾堡计划) 抓取与展示历史书籍资料，探索免 PDF 的纯净公版宝库。</p>
   </header>
 
   <main class="container">
     <section class="search-panel">
       <form id="searchForm">
-        <input id="searchInput" type="search" placeholder="输入关键词，例如：Life Magazine / 民国 / National Geographic" autocomplete="off" />
-        <button id="searchBtn" type="submit">搜索杂志</button>
+        <input id="searchInput" type="search" placeholder="输入关键词，例如：Magazine / History / Science" autocomplete="off" />
+        <button id="searchBtn" type="submit">搜索文献</button>
       </form>
       <div class="quick-actions">
-        <button class="quick-btn" type="button" data-query="Life Magazine">Life Magazine</button>
-        <button class="quick-btn" type="button" data-query="National Geographic">National Geographic</button>
-        <button class="quick-btn" type="button" data-query="民国期刊">民国期刊</button>
+        <button class="quick-btn" type="button" data-query="Magazine">Magazine</button>
+        <button class="quick-btn" type="button" data-query="History">History</button>
+        <button class="quick-btn" type="button" data-query="Science">Science</button>
       </div>
       <div class="status-row">
         <span id="statusText">准备搜索</span>
@@ -38,9 +42,10 @@
   </main>
 
   <footer class="footer">
-    数据来源于 Internet Archive，仅供学习与研究，请遵守版权法规。
+    数据来源于 Project Gutenberg，采用原生 HTML/EPUB 网页渲染，完全拒绝 PDF，尽享流畅阅读体验。
   </footer>
 
   <script src="script.js"></script>
 </body>
+
 </html>
