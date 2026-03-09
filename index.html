@@ -17,7 +17,7 @@
 <body>
   <header class="header">
     <h1>📜 历史文献馆</h1>
-    <p>从 Project Gutenberg 古腾堡计划探索公版典籍，免 PDF 纯净阅读体验</p>
+    <p>从 Project Gutenberg 古腾堡计划探索公版典籍，点击直达原页，完美支持沉浸式翻译</p>
   </header>
 
   <main class="container">
@@ -62,48 +62,8 @@
   </main>
 
   <footer class="footer">
-    数据来源于 Project Gutenberg，采用原生 HTML/EPUB 网页渲染，完全拒绝 PDF，尽享流畅阅读体验。
+    数据来源于 Project Gutenberg，点击封面或阅读按钮直达原始网页，完美支持沉浸式翻译等浏览器扩展。
   </footer>
-
-  <!-- 全屏阅读器（使用原生 <dialog> 置于 top-layer，确保沉浸式翻译扩展可正常识别内容） -->
-  <dialog id="readerModal" class="reader-dialog">
-    <div class="reader-header">
-      <button id="closeReader" class="reader-icon-btn">✕ 关闭</button>
-      <div class="reader-title-area">
-        <h2 id="readerTitle" class="reader-book-title"></h2>
-        <span id="readerChapterInfo" class="reader-chapter-info"></span>
-      </div>
-      <button id="toggleSidebar" class="reader-icon-btn">☰ 章节</button>
-    </div>
-
-    <!-- 顶部总进度条 -->
-    <div class="reader-progress-bar">
-      <div id="progressFill" class="reader-progress-fill"></div>
-    </div>
-
-    <div class="reader-body">
-      <!-- 章节侧栏 -->
-      <aside id="chapterSidebar" class="chapter-sidebar">
-        <h3 class="sidebar-title">章节目录</h3>
-        <ul id="chapterList" class="chapter-list"></ul>
-      </aside>
-
-      <!-- 阅读主区 -->
-      <div class="reader-main">
-        <div id="readerContent" class="reader-content" lang="en" translate="yes">
-          <div id="chapterLoading" class="reader-loading hidden">正在加载章节…</div>
-          <h2 id="chapterTitle" class="chapter-heading"></h2>
-          <article id="chapterText" class="chapter-body" lang="en" translate="yes"></article>
-        </div>
-
-        <div class="reader-controls">
-          <button id="prevChapter" class="reader-nav-btn" disabled>← 上一章</button>
-          <span id="chapterIndicator" class="chapter-indicator">— / —</span>
-          <button id="nextChapter" class="reader-nav-btn" disabled>下一章 →</button>
-        </div>
-      </div>
-    </div>
-  </dialog>
 
   <script src="script.js"></script>
 </body>

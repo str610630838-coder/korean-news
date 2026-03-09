@@ -1,6 +1,6 @@
 /**
  * 历史杂志馆 - 前端脚本
- * 功能：搜索 · 书架记忆阅读进度 · 按章节加载阅读（纯客户端，兼容 GitHub Pages）
+ * 功能：搜索 · 书架记忆 · 跳转至 Project Gutenberg 原页（原生支持沉浸式翻译等浏览器插件）
  */
 
 // ─── 常量 ──────────────────────────────────────────────────────────────────
@@ -24,173 +24,9 @@ const shelfCount       = document.getElementById("shelfCount");
 const shelfGrid        = document.getElementById("shelfGrid");
 const shelfStatus      = document.getElementById("shelfStatus");
 
-const readerModal      = document.getElementById("readerModal");
-const closeReaderBtn   = document.getElementById("closeReader");
-const toggleSidebarBtn = document.getElementById("toggleSidebar");
-const readerTitle      = document.getElementById("readerTitle");
-const readerChapterInfo= document.getElementById("readerChapterInfo");
-const chapterSidebar   = document.getElementById("chapterSidebar");
-const chapterList      = document.getElementById("chapterList");
-const progressFill     = document.getElementById("progressFill");
-const readerContent    = document.getElementById("readerContent");
-const chapterLoading   = document.getElementById("chapterLoading");
-const chapterTitle     = document.getElementById("chapterTitle");
-const chapterText      = document.getElementById("chapterText");
-const prevChapterBtn   = document.getElementById("prevChapter");
-const nextChapterBtn   = document.getElementById("nextChapter");
-const chapterIndicator = document.getElementById("chapterIndicator");
-
 // ─── 运行时状态 ────────────────────────────────────────────────────────────
 /** 搜索结果缓存，用于书架操作时回填数据 @type {Record<string, Object>} */
 let currentItems = {};
-
-const readerState = {
-  bookId: null,
-  bookTitle: null,
-  webpageUrl: null,
-  chapters: [],
-  currentChapter: 0,
-};
-
-// ─── 客户端章节缓存与解析（替代后端 /api/book/* 接口，兼容静态托管）─────────
-/** 内存缓存：{bookId: [{title, content}, ...]} */
-const _chapterCache = {};
-
-/** 匹配章节/篇/卷等标题行（与 Python 后端 CHAPTER_RE 等效） */
-const CHAPTER_RE = /^[ \t]{0,4}((?:CHAPTER|PART|BOOK|SECTION|VOLUME|ACT)[ \t]+(?:[IVXLCDM]{1,10}|\d{1,4}(?:st|nd|rd|th)?|(?:THE\s+)?[A-Z][A-Z ]{0,40}?))[ \t]*(?:\.|:|—|--)?[ \t]*$/gm;
-
-function _splitChapters(rawText) {
-  let text = rawText;
-
-  // 去除 Gutenberg 页眉
-  for (const marker of [
-    "*** START OF THE PROJECT GUTENBERG",
-    "*** START OF THIS PROJECT GUTENBERG",
-    "*END*THE SMALL PRINT",
-  ]) {
-    const idx = text.indexOf(marker);
-    if (idx !== -1) {
-      const nl = text.indexOf("\n", idx);
-      if (nl !== -1) text = text.slice(nl + 1);
-      break;
-    }
-  }
-
-  // 去除 Gutenberg 页脚
-  for (const marker of [
-    "*** END OF THE PROJECT GUTENBERG",
-    "*** END OF THIS PROJECT GUTENBERG",
-    "End of the Project Gutenberg",
-    "End of Project Gutenberg",
-  ]) {
-    const idx = text.indexOf(marker);
-    if (idx !== -1) { text = text.slice(0, idx); break; }
-  }
-
-  // 重置正则 lastIndex（使用 /g 标志时需要）
-  CHAPTER_RE.lastIndex = 0;
-  const matches = [...text.matchAll(CHAPTER_RE)];
-
-  if (matches.length < 2) {
-    // 无章节标题 — 按段落分页，每页约 3000 字符
-    const paragraphs = text.split(/\n\n+/).map(p => p.trim()).filter(Boolean);
-    if (!paragraphs.length) return [{ title: "全文", content: text.slice(0, 30000) }];
-
-    const pages = [];
-    let cur = [], curLen = 0;
-    for (const para of paragraphs) {
-      if (curLen + para.length > 3000 && cur.length) {
-        pages.push(cur.join("\n\n"));
-        cur = [para];
-        curLen = para.length;
-      } else {
-        cur.push(para);
-        curLen += para.length;
-      }
-    }
-    if (cur.length) pages.push(cur.join("\n\n"));
-    return pages.map((p, i) => ({ title: `第 ${i + 1} 页`, content: p }));
-  }
-
-  return matches.map((m, i) => {
-    const title = m[1].trim();
-    const start = m.index;
-    const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
-    let content = text.slice(start, end).trim();
-    if (content.length > 30000) content = content.slice(0, 30000) + "\n\n…（章节内容过长，已截取前部分）";
-    return { title, content };
-  });
-}
-
-/** 将 URL 强制升级为 HTTPS，避免 HTTPS 页面被浏览器阻断混合内容 */
-function _toHttps(url) {
-  return url.replace(/^http:\/\//i, "https://");
-}
-
-/** 依次尝试多个 URL，返回第一个成功响应的文本；全部失败则抛出最后一个错误 */
-async function _fetchText(urls) {
-  let lastErr;
-  for (const url of urls) {
-    try {
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return await resp.text();
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-  throw lastErr;
-}
-
-async function _fetchBookChapters(bookId) {
-  if (_chapterCache[bookId]) return _chapterCache[bookId];
-
-  // 获取书籍元数据（含文本文件 URL）
-  let meta;
-  try {
-    const metaResp = await fetch(`https://gutendex.com/books/?ids=${encodeURIComponent(bookId)}`);
-    if (!metaResp.ok) throw new Error(`Gutendex 请求失败: HTTP ${metaResp.status}`);
-    meta = await metaResp.json();
-  } catch (e) {
-    throw new Error(`获取书籍信息失败：${e.message}`);
-  }
-
-  const results = meta.results || [];
-  if (!results.length) throw new Error(`书籍不存在: ${bookId}`);
-
-  const formats = results[0].formats || {};
-  const rawUrl =
-    formats["text/plain; charset=utf-8"] ||
-    formats["text/plain; charset=us-ascii"] ||
-    formats["text/plain"];
-
-  if (!rawUrl) throw new Error("该书籍无纯文本版本，无法按章节加载");
-
-  // 强制 HTTPS，并准备 CORS 代理备用地址
-  const textUrl = _toHttps(rawUrl);
-  const proxyUrls = [
-    `https://corsproxy.io/?url=${encodeURIComponent(textUrl)}`,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(textUrl)}`,
-  ];
-
-  let text;
-  try {
-    // 优先直连；iOS Safari / 跨域受限时会抛出 TypeError
-    const resp = await fetch(textUrl);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    text = await resp.text();
-  } catch {
-    // 直连失败 → 依次尝试代理
-    try {
-      text = await _fetchText(proxyUrls);
-    } catch (proxyErr) {
-      throw new Error(`获取书籍文本失败：${proxyErr.message}`);
-    }
-  }
-
-  _chapterCache[bookId] = _splitChapters(text);
-  return _chapterCache[bookId];
-}
 
 // ─── 书架管理（localStorage） ──────────────────────────────────────────────
 function loadShelf() {
@@ -205,19 +41,12 @@ function saveShelf(shelf) {
   localStorage.setItem(SHELF_KEY, JSON.stringify(shelf));
 }
 
-function isOnShelf(bookId) {
-  return !!loadShelf()[bookId];
-}
-
 function addToShelf(item) {
   const shelf = loadShelf();
   if (!shelf[item.id]) {
     shelf[item.id] = {
       ...item,
       addedAt: new Date().toISOString(),
-      currentChapter: 0,
-      totalChapters: null,
-      lastRead: null,
     };
     saveShelf(shelf);
   }
@@ -232,16 +61,6 @@ function removeFromShelf(bookId) {
   updateShelfBadge();
   renderShelf();
   renderCards(Object.values(currentItems));
-}
-
-function saveReadingProgress(bookId, chapterNum, totalChapters) {
-  const shelf = loadShelf();
-  if (shelf[bookId]) {
-    shelf[bookId].currentChapter = chapterNum;
-    shelf[bookId].totalChapters  = totalChapters;
-    shelf[bookId].lastRead       = new Date().toISOString();
-    saveShelf(shelf);
-  }
 }
 
 function updateShelfBadge() {
@@ -302,23 +121,13 @@ function renderCards(items) {
   const shelf = loadShelf();
 
   magazineGrid.innerHTML = items.map(item => {
-    const onShelf    = !!shelf[item.id];
-    const progress   = shelf[item.id];
-    const progressPct = (progress?.totalChapters && progress.totalChapters > 1)
-      ? Math.round((progress.currentChapter / (progress.totalChapters - 1)) * 100)
-      : null;
-
+    const onShelf = !!shelf[item.id];
     const title   = escapeHtml(item.title || "无标题");
     const creator = escapeHtml(item.creator || "未知");
     const thumb   = escapeHtml(item.thumbnail || "");
     const desc    = escapeHtml(item.description || "");
     const subject = escapeHtml((item.subject || "").slice(0, 80));
-
-    const progressHtml = progressPct !== null
-      ? `<div class="mini-progress" title="阅读进度 ${progressPct}%">
-           <div class="mini-progress-fill" style="width:${progressPct}%"></div>
-         </div>`
-      : "";
+    const url     = escapeHtml(item.webpage_url || "");
 
     const shelfBtnHtml = onShelf
       ? `<button class="shelf-btn shelf-btn--remove" data-id="${item.id}">📌 已收藏</button>`
@@ -326,10 +135,9 @@ function renderCards(items) {
 
     return `
 <article class="magazine-card">
-  <a href="#" class="card-cover-link" data-id="${item.id}" data-title="${escapeHtml(item.title)}">
+  <a href="${url}" class="card-cover-link" target="_blank" rel="noopener noreferrer">
     <img class="magazine-cover" src="${thumb || PLACEHOLDER_SVG}" alt="${title} 封面" loading="lazy"
          onerror="this.src='${PLACEHOLDER_SVG}'">
-    ${progressHtml}
   </a>
   <div class="magazine-content">
     <h3 class="magazine-title">${title}</h3>
@@ -337,8 +145,7 @@ function renderCards(items) {
     <p class="magazine-meta">${desc}</p>
     ${subject ? `<p class="magazine-subject">${subject}</p>` : ""}
     <div class="magazine-actions">
-      <button class="view-btn" data-id="${item.id}" data-title="${escapeHtml(item.title)}"
-              data-url="${escapeHtml(item.webpage_url)}">📖 阅读</button>
+      <a class="view-btn" href="${url}" target="_blank" rel="noopener noreferrer">📖 阅读</a>
       ${shelfBtnHtml}
     </div>
   </div>
@@ -362,43 +169,26 @@ function renderShelf() {
   shelfStatus.textContent = `共 ${items.length} 本`;
 
   shelfGrid.innerHTML = items
-    .sort((a, b) => (b.lastRead || b.addedAt).localeCompare(a.lastRead || a.addedAt))
+    .sort((a, b) => (b.addedAt || "").localeCompare(a.addedAt || ""))
     .map(item => {
-      const progressPct = (item.totalChapters && item.totalChapters > 1)
-        ? Math.round((item.currentChapter / (item.totalChapters - 1)) * 100)
-        : 0;
-      const progressLabel = item.totalChapters
-        ? `第 ${item.currentChapter + 1} 章 / 共 ${item.totalChapters} 章`
-        : "尚未开始阅读";
-      const dateLabel = item.lastRead
-        ? `上次阅读：${new Date(item.lastRead).toLocaleDateString()}`
-        : `添加于：${new Date(item.addedAt).toLocaleDateString()}`;
-      const readLabel = item.lastRead ? "▶ 继续阅读" : "📖 开始阅读";
-
+      const dateLabel = `添加于：${new Date(item.addedAt).toLocaleDateString()}`;
       const title   = escapeHtml(item.title || "无标题");
       const creator = escapeHtml(item.creator || "未知");
       const thumb   = escapeHtml(item.thumbnail || "");
+      const url     = escapeHtml(item.webpage_url || "");
 
       return `
 <article class="magazine-card">
-  <a href="#" class="card-cover-link" data-id="${item.id}" data-title="${escapeHtml(item.title)}"
-     data-url="${escapeHtml(item.webpage_url || "")}">
+  <a href="${url}" class="card-cover-link" target="_blank" rel="noopener noreferrer">
     <img class="magazine-cover" src="${thumb || PLACEHOLDER_SVG}" alt="${title} 封面" loading="lazy"
          onerror="this.src='${PLACEHOLDER_SVG}'">
-    <div class="shelf-progress-overlay">
-      <div class="shelf-progress-bar">
-        <div class="shelf-progress-fill" style="width:${progressPct}%"></div>
-      </div>
-      <span class="shelf-progress-text">${progressLabel}</span>
-    </div>
   </a>
   <div class="magazine-content">
     <h3 class="magazine-title">${title}</h3>
     <p class="magazine-meta">${creator}</p>
     <p class="magazine-meta shelf-date-label">${dateLabel}</p>
     <div class="magazine-actions">
-      <button class="view-btn" data-id="${item.id}" data-title="${escapeHtml(item.title)}"
-              data-url="${escapeHtml(item.webpage_url || "")}">${readLabel}</button>
+      <a class="view-btn" href="${url}" target="_blank" rel="noopener noreferrer">📖 阅读</a>
       <button class="shelf-btn shelf-btn--remove" data-id="${item.id}">移除</button>
     </div>
   </div>
@@ -413,170 +203,8 @@ function switchTab(tabName) {
   if (tabName === "bookshelf") renderShelf();
 }
 
-// ─── 阅读器 ────────────────────────────────────────────────────────────────
-/**
- * 将章节纯文本渲染为 <p> 段落，提升沉浸式翻译等插件的兼容性。
- * 按双换行切分段落；单行换行保留在 <p> 内（white-space:pre-wrap）。
- */
-function _renderParagraphs(text) {
-  // 清除上一章残留的"已处理"标记，让扩展对新内容重新扫描
-  const WALKED_ATTRS = [
-    "data-immersive-translate-walked",
-    "data-immersive-translate-effect",
-    "data-immersive-translate-block-id",
-  ];
-  WALKED_ATTRS.forEach(a => chapterText.removeAttribute(a));
-  chapterText
-    .querySelectorAll(WALKED_ATTRS.map(a => `[${a}]`).join(","))
-    .forEach(el => WALKED_ATTRS.forEach(a => el.removeAttribute(a)));
-
-  chapterText.innerHTML = "";
-  const paragraphs = text.split(/\n\n+/).map(p => p.trim()).filter(Boolean);
-  const fragment = document.createDocumentFragment();
-  for (const para of paragraphs) {
-    const p = document.createElement("p");
-    p.textContent = para;
-    p.setAttribute("lang", "en");
-    fragment.appendChild(p);
-  }
-  if (!fragment.childNodes.length) {
-    const p = document.createElement("p");
-    p.textContent = text;
-    p.setAttribute("lang", "en");
-    fragment.appendChild(p);
-  }
-  chapterText.appendChild(fragment);
-}
-
-
-async function openReader(bookId, bookTitle, webpageUrl) {
-  readerTitle.textContent    = bookTitle;
-  readerChapterInfo.textContent = "";
-  chapterTitle.textContent   = "";
-  chapterText.innerHTML      = "";
-  chapterList.innerHTML      = '<li class="chapter-loading">正在加载章节目录…</li>';
-  chapterLoading.classList.remove("hidden");
-  prevChapterBtn.disabled    = true;
-  nextChapterBtn.disabled    = true;
-  progressFill.style.width   = "0%";
-  chapterIndicator.textContent = "— / —";
-
-  readerState.bookId      = bookId;
-  readerState.bookTitle   = bookTitle;
-  readerState.webpageUrl  = webpageUrl;
-  readerState.chapters    = [];
-
-  readerModal.showModal();
-  document.body.style.overflow = "hidden";
-
-  // 恢复书架中保存的进度
-  const shelf         = loadShelf();
-  const savedChapter  = shelf[bookId]?.currentChapter ?? 0;
-
-  try {
-    // 直接在浏览器端获取并解析书籍文本（无需后端）
-    const chapters = await _fetchBookChapters(bookId);
-
-    readerState.chapters = chapters;
-    renderChapterList(chapters, savedChapter);
-
-    // 同步更新书架总章节数
-    if (shelf[bookId]) {
-      saveReadingProgress(bookId, savedChapter, chapters.length);
-    }
-
-    await loadChapter(bookId, savedChapter);
-  } catch (err) {
-    chapterLoading.classList.add("hidden");
-    _renderParagraphs(`加载失败：${err.message}`);
-
-    if (webpageUrl) {
-      const link = document.createElement("a");
-      link.href   = webpageUrl;
-      link.target = "_blank";
-      link.rel    = "noopener noreferrer";
-      link.textContent = "→ 在 Project Gutenberg 网站阅读";
-      link.style.cssText = "display:block;margin-top:1rem;color:var(--brand-hover);";
-      chapterText.after(link);
-    }
-  }
-}
-
-function renderChapterList(chapters, activeIndex) {
-  chapterList.innerHTML = chapters.map((ch, i) => `
-    <li class="chapter-item ${i === activeIndex ? "active" : ""}" data-index="${i}">
-      ${escapeHtml(ch.title)}
-    </li>`).join("");
-}
-
-async function loadChapter(bookId, chapterNum) {
-  chapterLoading.classList.remove("hidden");
-  chapterTitle.textContent = "";
-  chapterText.innerHTML    = "";
-  readerContent.scrollTop  = 0;
-
-  try {
-    // 从客户端缓存中取章节内容
-    const chapters = await _fetchBookChapters(bookId);
-    if (chapterNum < 0 || chapterNum >= chapters.length) {
-      throw new Error(`章节不存在: ${chapterNum}`);
-    }
-
-    const chapter = chapters[chapterNum];
-    const total   = chapters.length;
-
-    chapterTitle.textContent = chapter.title;
-    _renderParagraphs(chapter.content);
-    readerState.currentChapter = chapterNum;
-
-    prevChapterBtn.disabled   = chapterNum <= 0;
-    nextChapterBtn.disabled   = chapterNum >= total - 1;
-    chapterIndicator.textContent = `${chapterNum + 1} / ${total}`;
-    readerChapterInfo.textContent = `${chapterNum + 1} / ${total}`;
-
-    // 顶部进度条
-    const pct = total > 1 ? (chapterNum / (total - 1)) * 100 : 100;
-    progressFill.style.width = `${pct}%`;
-
-    // 侧栏高亮
-    document.querySelectorAll(".chapter-item").forEach((el, i) => {
-      el.classList.toggle("active", i === chapterNum);
-    });
-    chapterList.querySelector(".chapter-item.active")
-      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-
-    // 保存进度（仅书架中的书）
-    saveReadingProgress(bookId, chapterNum, total);
-
-  } catch (err) {
-    _renderParagraphs(`加载章节失败：${err.message}`);
-  } finally {
-    chapterLoading.classList.add("hidden");
-  }
-}
-
-function closeReader() {
-  readerModal.close();
-}
-
 // ─── 事件委托（统一处理卡片内按钮） ────────────────────────────────────────
 document.addEventListener("click", e => {
-  // 封面点击 → 打开阅读器
-  const coverLink = e.target.closest(".card-cover-link[data-id]");
-  if (coverLink) {
-    e.preventDefault();
-    openReader(coverLink.dataset.id, coverLink.dataset.title || coverLink.dataset.id, coverLink.dataset.url);
-    return;
-  }
-
-  // "阅读" 按钮
-  const viewBtn = e.target.closest(".view-btn[data-id]");
-  if (viewBtn) {
-    e.preventDefault();
-    openReader(viewBtn.dataset.id, viewBtn.dataset.title || viewBtn.dataset.id, viewBtn.dataset.url);
-    return;
-  }
-
   // "加入书架" 按钮
   const shelfBtn = e.target.closest(".shelf-btn:not(.shelf-btn--remove)");
   if (shelfBtn) {
@@ -591,56 +219,10 @@ document.addEventListener("click", e => {
     removeFromShelf(removeBtn.dataset.id);
     return;
   }
-
-  // 章节列表项点击
-  const chapterItem = e.target.closest(".chapter-item[data-index]");
-  if (chapterItem) {
-    const idx = parseInt(chapterItem.dataset.index, 10);
-    loadChapter(readerState.bookId, idx);
-    if (window.innerWidth < 768) {
-      chapterSidebar.classList.remove("open");
-    }
-    return;
-  }
 });
 
 // 标签页
 tabBtns.forEach(btn => btn.addEventListener("click", () => switchTab(btn.dataset.tab)));
-
-// 阅读器控制
-closeReaderBtn.addEventListener("click", closeReader);
-
-// dialog 关闭时（关闭按钮或 Esc 键）统一清理
-readerModal.addEventListener("close", () => {
-  document.body.style.overflow = "";
-  renderCards(Object.values(currentItems));
-  if (document.getElementById("tab-bookshelf").classList.contains("active")) {
-    renderShelf();
-  }
-});
-
-toggleSidebarBtn.addEventListener("click", () => {
-  chapterSidebar.classList.toggle("open");
-});
-
-prevChapterBtn.addEventListener("click", () => {
-  if (readerState.currentChapter > 0) {
-    loadChapter(readerState.bookId, readerState.currentChapter - 1);
-  }
-});
-
-nextChapterBtn.addEventListener("click", () => {
-  if (readerState.currentChapter < readerState.chapters.length - 1) {
-    loadChapter(readerState.bookId, readerState.currentChapter + 1);
-  }
-});
-
-// 键盘快捷键（Esc 由 <dialog> 原生处理，此处仅补充左右翻章）
-document.addEventListener("keydown", e => {
-  if (!readerModal.open) return;
-  if (e.key === "ArrowLeft")  prevChapterBtn.click();
-  if (e.key === "ArrowRight") nextChapterBtn.click();
-});
 
 // ─── 搜索 ──────────────────────────────────────────────────────────────────
 async function fetchSearch(query) {
