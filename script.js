@@ -141,9 +141,20 @@ async function _fetchBookChapters(bookId) {
 
   if (!textUrl) throw new Error("该书籍无纯文本版本，无法按章节加载");
 
-  const textResp = await fetch(textUrl);
-  if (!textResp.ok) throw new Error(`获取书籍文本失败: HTTP ${textResp.status}`);
-  const text = await textResp.text();
+  // 先直连获取，失败时（CORS/网络）自动切换 CORS 代理重试
+  let text;
+  try {
+    const textResp = await fetch(textUrl);
+    if (!textResp.ok) throw new Error(`获取书籍文本失败: HTTP ${textResp.status}`);
+    text = await textResp.text();
+  } catch (directErr) {
+    if (directErr.message && directErr.message.startsWith("获取书籍文本失败")) throw directErr;
+    // 网络/CORS 错误 — 通过代理重试
+    const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(textUrl)}`;
+    const proxyResp = await fetch(proxyUrl);
+    if (!proxyResp.ok) throw new Error(`获取书籍文本失败: HTTP ${proxyResp.status}`);
+    text = await proxyResp.text();
+  }
 
   _chapterCache[bookId] = _splitChapters(text);
   return _chapterCache[bookId];
