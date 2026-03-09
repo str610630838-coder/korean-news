@@ -64,6 +64,12 @@ body {
   border-radius: 8px;
   padding: 0.75rem 0.85rem;
   font-size: 0.95rem;
+  transition: border-color 0.2s;
+}
+
+#searchInput:focus {
+  outline: none;
+  border-color: var(--brand);
 }
 
 #searchBtn,
@@ -80,12 +86,18 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition: background 0.2s;
 }
 
 #searchBtn:hover,
 .quick-btn:hover,
 .view-btn:hover {
   background: var(--brand-hover);
+}
+
+#searchBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .quick-actions {
@@ -101,6 +113,7 @@ body {
   justify-content: space-between;
   align-items: center;
   color: var(--text-sub);
+  font-size: 0.9rem;
 }
 
 .loading,
@@ -113,6 +126,7 @@ body {
 .loading {
   background: #18283e;
   border: 1px solid #274b72;
+  color: #7eb9ff;
 }
 
 .error {
@@ -138,12 +152,13 @@ body {
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
-  transition: 0.2s ease;
+  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .magazine-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-3px);
   background: var(--panel-hover);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.4);
 }
 
 .magazine-cover {
@@ -151,6 +166,7 @@ body {
   aspect-ratio: 3 / 4;
   object-fit: cover;
   background: #1a1d24;
+  display: block;
 }
 
 .magazine-content {

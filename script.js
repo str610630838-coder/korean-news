@@ -2,9 +2,11 @@
  * 历史杂志馆 - 前端脚本
  * 支持两种模式：
  * 1. 有 api 参数时：请求自建后端
- * 2. 无后端时：直连 Internet Archive CORS API，GitHub Pages 开箱即用
+ * 2. 无后端时：直连 Internet Archive API（原生支持 CORS，GitHub Pages 开箱即用）
+ *
+ * 修复：cors.archive.org 代理已失效，改用 archive.org 官方 API 直接请求
  */
-const IA_CORS_SEARCH = "https://cors.archive.org/advancedsearch.php";
+const IA_SEARCH_URL = "https://archive.org/advancedsearch.php";
 const IA_IMG_BASE = "https://archive.org/services/img/";
 const IA_DETAILS_BASE = "https://archive.org/details/";
 
@@ -97,13 +99,17 @@ function normalizeMagazineEntry(doc) {
     description,
     subject,
     thumbnail: identifier ? `${IA_IMG_BASE}${identifier}` : "",
-    webpage_url: identifier ? `${IA_DETAILS_BASE}${identifier}` : "",
+    webpage_url: identifier ? `${IA_DETAILS_BASE}${identifier}/mode/2up` : "",
   };
 }
 
-/** 直连 Internet Archive CORS API 搜索 */
+/**
+ * 直连 Internet Archive 官方 API 搜索
+ * archive.org/advancedsearch.php 原生支持 CORS，无需代理
+ */
 async function searchViaArchiveDirect(query, limit = 18) {
-  const searchQuery = `collection:(periodicals OR magazine_rack) ${query}`;
+  // 主搜索：periodicals 集合，加入过滤条件确保有真实的按页扫描数据（排除纯PDF文件和原生数字PDF上传）
+  const searchQuery = `collection:(periodicals OR magazine_rack) ${query} AND (format:Scandata OR format:"Single Page Processed JP2 ZIP") AND imagecount:[1 TO *]`;
   const params = new URLSearchParams({
     q: searchQuery,
     output: "json",
@@ -111,7 +117,7 @@ async function searchViaArchiveDirect(query, limit = 18) {
     fl: "identifier,title,creator,date,description,subject",
     sort: "date desc",
   });
-  const url = `${IA_CORS_SEARCH}?${params}`;
+  const url = `${IA_SEARCH_URL}?${params}`;
   const resp = await fetch(url, { cache: "no-store" });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json();
@@ -119,8 +125,9 @@ async function searchViaArchiveDirect(query, limit = 18) {
   if (docs.length > 0) {
     return docs.filter((d) => d.identifier).map(normalizeMagazineEntry);
   }
-  // 备用：broad texts 搜索
-  const fallbackQuery = `mediatype:texts ${query}`;
+
+  // 备用：broad texts 搜索，同样严格过滤以排除纯PDF
+  const fallbackQuery = `mediatype:texts ${query} AND (format:Scandata OR format:"Single Page Processed JP2 ZIP") AND imagecount:[1 TO *]`;
   const fallbackParams = new URLSearchParams({
     q: fallbackQuery,
     output: "json",
@@ -128,13 +135,16 @@ async function searchViaArchiveDirect(query, limit = 18) {
     fl: "identifier,title,creator,date,description,subject",
     sort: "date desc",
   });
-  const fallbackUrl = `${IA_CORS_SEARCH}?${fallbackParams}`;
+  const fallbackUrl = `${IA_SEARCH_URL}?${fallbackParams}`;
   const fallbackResp = await fetch(fallbackUrl, { cache: "no-store" });
   if (!fallbackResp.ok) throw new Error(`HTTP ${fallbackResp.status}`);
   const fallbackData = await fallbackResp.json();
   const fallbackDocs = fallbackData?.response?.docs || [];
   return fallbackDocs.filter((d) => d.identifier).map(normalizeMagazineEntry);
 }
+
+const PLACEHOLDER_SVG =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='293'%3E%3Crect fill='%231a1d24' width='220' height='293'/%3E%3Ctext fill='%239aa3b8' x='110' y='150' text-anchor='middle' font-size='14'%3E无封面%3C/text%3E%3C/svg%3E";
 
 function renderCards(items) {
   if (!items.length) {
@@ -152,7 +162,7 @@ function renderCards(items) {
       return `
     <article class="magazine-card">
       <a href="${link}" target="_blank" rel="noopener noreferrer">
-        <img class="magazine-cover" src="${thumb || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22220%22 height=%22293%22%3E%3Crect fill=%22%231a1d24%22 width=%22220%22 height=%22293%22/%3E%3Ctext fill=%22%239aa3b8%22 x=%22110%22 y=%22150%22 text-anchor=%22middle%22 font-size=%2214%22%3E%E6%97%A0%E5%B0%81%E9%9D%A2%3C/text%3E%3C/svg%3E'}" alt="${title} 封面" loading="lazy">
+        <img class="magazine-cover" src="${thumb || PLACEHOLDER_SVG}" alt="${title} 封面" loading="lazy" onerror="this.src='${PLACEHOLDER_SVG}'">
       </a>
       <div class="magazine-content">
         <h3 class="magazine-title">${title}</h3>
@@ -186,11 +196,12 @@ async function fetchSearch(query) {
     }
     lastItems = items;
     renderCards(items);
-    statusText.textContent = `搜索完成：${query}`;
+    statusText.textContent = `搜索完成：${query}（共 ${items.length} 条）`;
   } catch (err) {
     console.error(err);
     showError(`搜索失败：${err.message || "网络错误，请稍后重试"}`);
     renderEmpty();
+    statusText.textContent = "搜索失败";
   } finally {
     setLoading(false);
   }
@@ -212,6 +223,6 @@ quickButtons.forEach((button) => {
   });
 });
 
-// 页面加载时直接搜索，无需配置 API
+// 页面加载时直接搜索 Life Magazine，无需配置任何 API
 hideError();
 fetchSearch("Life Magazine");
