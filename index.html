@@ -28,7 +28,7 @@
         📚 我的书架
         <span id="shelfCount" class="shelf-badge" style="display:none">0</span>
       </button>
-      <button class="tab-btn" data-tab="local-reader">📄 本地阅读器</button>
+      <button class="tab-btn" data-tab="local-reader">📖 站内阅读器</button>
     </div>
 
     <!-- 搜索标签页 -->
@@ -61,26 +61,25 @@
       <div id="shelfGrid" class="magazine-grid"></div>
     </section>
 
-    <!-- 本地阅读器标签页 -->
+    <!-- 站内阅读器标签页 -->
     <section id="tab-local-reader" class="tab-content search-panel">
       <div class="local-reader-header">
-        <h2>本地阅读器</h2>
-        <p>导入 txt / md / html / htm 文件后，正文会直接渲染在页面中，方便沉浸式翻译插件识别。</p>
+        <h2>站内阅读器</h2>
+        <p>从搜索结果或书架点击“站内阅读”，正文会在本站页面中渲染，便于沉浸式翻译插件识别。</p>
       </div>
       <div class="local-reader-controls">
-        <label class="local-file-label" for="localFileInput">选择本地文件</label>
-        <input id="localFileInput" type="file" accept=".txt,.md,.html,.htm,text/plain,text/html,text/markdown" />
         <button id="clearLocalReaderBtn" class="secondary-btn" type="button">清空内容</button>
       </div>
-      <div id="localReaderStatus" class="local-reader-status">尚未导入文件</div>
+      <div id="localReaderStatus" class="local-reader-status">尚未打开书籍</div>
+      <div id="localReaderMeta" class="local-reader-meta hidden"></div>
       <article id="localReaderContent" class="local-reader-content">
-        <p class="local-reader-empty">请选择本地文本文件开始阅读。</p>
+        <p class="local-reader-empty">请在搜索结果或书架中点击“站内阅读”开始。</p>
       </article>
     </section>
   </main>
 
   <footer class="footer">
-    数据来源于 Project Gutenberg，点击封面或阅读按钮直达原始网页，完美支持沉浸式翻译等浏览器扩展。
+    数据来源于 Project Gutenberg，可直达原页，也可在站内阅读模式下配合沉浸式翻译插件使用。
   </footer>
 
   <script src="script.js"></script>

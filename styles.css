@@ -319,7 +319,6 @@ body {
   align-items: center;
 }
 
-.local-file-label,
 .secondary-btn {
   border: 1px solid var(--border-bright);
   border-radius: var(--radius);
@@ -331,17 +330,10 @@ body {
   transition: all 0.2s;
 }
 
-.local-file-label:hover,
 .secondary-btn:hover {
   border-color: var(--brand);
   color: var(--brand-hover);
   background: var(--brand-dim);
-}
-
-#localFileInput {
-  max-width: 320px;
-  color: var(--text-sub);
-  font-size: 0.82rem;
 }
 
 .local-reader-status {
@@ -351,6 +343,35 @@ body {
 }
 
 .local-reader-status--error { color: #ffb0bf; }
+
+.local-reader-meta {
+  margin-top: 0.75rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(17, 22, 32, 0.72);
+}
+
+.local-reader-meta h3 {
+  font-size: 1rem;
+  font-family: "Noto Serif SC", serif;
+}
+
+.local-reader-meta p {
+  margin-top: 0.35rem;
+  font-size: 0.83rem;
+  color: var(--text-sub);
+}
+
+.local-reader-meta a {
+  margin-top: 0.45rem;
+  display: inline-block;
+  color: var(--brand-hover);
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
+.local-reader-meta a:hover { text-decoration: underline; }
 
 .local-reader-content {
   margin-top: 0.85rem;
@@ -528,11 +549,6 @@ body {
   .local-reader-controls {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  #localFileInput {
-    max-width: none;
-    width: 100%;
   }
 
   .magazine-grid {

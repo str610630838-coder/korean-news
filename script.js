@@ -1,12 +1,12 @@
 /**
  * 历史杂志馆 - 前端脚本
- * 功能：搜索 · 书架记忆 · 跳转至 Project Gutenberg 原页（原生支持沉浸式翻译等浏览器插件）
+ * 功能：搜索 · 书架记忆 · 站内阅读（兼容沉浸式翻译插件）
  */
 
 // ─── 常量 ──────────────────────────────────────────────────────────────────
 const GUTENDEX_BASE = "https://gutendex.com/books";
 const SHELF_KEY = "history-hub-bookshelf";
-const LOCAL_READER_KEY = "history-hub-local-reader";
+const READER_STATE_KEY = "history-hub-reader-state";
 
 // ─── DOM 引用 ───────────────────────────────────────────────────────────────
 const searchForm       = document.getElementById("searchForm");
@@ -24,9 +24,9 @@ const tabContents      = document.querySelectorAll(".tab-content");
 const shelfCount       = document.getElementById("shelfCount");
 const shelfGrid        = document.getElementById("shelfGrid");
 const shelfStatus      = document.getElementById("shelfStatus");
-const localFileInput   = document.getElementById("localFileInput");
 const clearLocalReaderBtn = document.getElementById("clearLocalReaderBtn");
 const localReaderStatus = document.getElementById("localReaderStatus");
+const localReaderMeta = document.getElementById("localReaderMeta");
 const localReaderContent = document.getElementById("localReaderContent");
 
 // ─── 运行时状态 ────────────────────────────────────────────────────────────
@@ -74,23 +74,26 @@ function updateShelfBadge() {
   shelfCount.style.display = count > 0 ? "inline-flex" : "none";
 }
 
-// ─── 本地阅读器（localStorage） ─────────────────────────────────────────────
+// ─── 站内阅读器（localStorage） ─────────────────────────────────────────────
 function loadLocalReaderState() {
-  const fallback = { source: "", content: "" };
+  const fallback = { id: "", title: "", creator: "", source: "", content: "" };
   try {
-    const parsed = JSON.parse(localStorage.getItem(LOCAL_READER_KEY) || "null");
+    const parsed = JSON.parse(localStorage.getItem(READER_STATE_KEY) || "null");
     if (!parsed || typeof parsed !== "object") return fallback;
+    const id = typeof parsed.id === "string" ? parsed.id : "";
+    const title = typeof parsed.title === "string" ? parsed.title : "";
+    const creator = typeof parsed.creator === "string" ? parsed.creator : "";
     const source = typeof parsed.source === "string" ? parsed.source : "";
     const content = typeof parsed.content === "string" ? parsed.content : "";
-    return { source, content };
+    return { id, title, creator, source, content };
   } catch (err) {
-    console.error("读取本地阅读器缓存失败", err);
+    console.error("读取站内阅读器缓存失败", err);
     return fallback;
   }
 }
 
-function saveLocalReaderState(source, content) {
-  localStorage.setItem(LOCAL_READER_KEY, JSON.stringify({ source, content }));
+function saveLocalReaderState(state) {
+  localStorage.setItem(READER_STATE_KEY, JSON.stringify(state));
 }
 
 // ─── 工具函数 ──────────────────────────────────────────────────────────────
@@ -120,7 +123,7 @@ function setLocalReaderStatus(message, isError = false) {
   localReaderStatus.classList.toggle("local-reader-status--error", isError);
 }
 
-function normalizeLocalText(rawText) {
+function normalizeReaderText(rawText) {
   const cleanText = (rawText || "").replace(/\r\n/g, "\n").trim();
   if (!cleanText) return "";
   return cleanText
@@ -130,17 +133,29 @@ function normalizeLocalText(rawText) {
     .join("\n\n");
 }
 
-function extractTextFromHtml(htmlText) {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(htmlText, "text/html");
-  return doc.body?.textContent || "";
+function renderLocalReaderMeta(item) {
+  if (!item?.title) {
+    localReaderMeta.classList.add("hidden");
+    localReaderMeta.innerHTML = "";
+    return;
+  }
+  localReaderMeta.classList.remove("hidden");
+  const title = escapeHtml(item.title || "无标题");
+  const creator = escapeHtml(item.creator || "未知");
+  const source = escapeHtml(item.source || "");
+  localReaderMeta.innerHTML = `
+    <h3>${title}</h3>
+    <p>作者：${creator}</p>
+    ${source ? `<a href="${source}" target="_blank" rel="noopener noreferrer">查看 Project Gutenberg 原页</a>` : ""}
+  `;
 }
 
-function renderLocalReaderContent(content, sourceLabel) {
-  const normalized = normalizeLocalText(content);
+function renderLocalReaderContent(content, sourceLabel, metaItem = null) {
+  const normalized = normalizeReaderText(content);
+  renderLocalReaderMeta(metaItem);
   if (!normalized) {
-    localReaderContent.innerHTML = '<p class="local-reader-empty">文件内容为空或无法解析。</p>';
-    setLocalReaderStatus(`导入失败：${sourceLabel} 没有可显示文本`, true);
+    localReaderContent.innerHTML = '<p class="local-reader-empty">当前书籍暂无可显示正文。</p>';
+    setLocalReaderStatus(`加载失败：${sourceLabel} 没有可显示正文`, true);
     return;
   }
 
@@ -153,10 +168,11 @@ function renderLocalReaderContent(content, sourceLabel) {
 }
 
 function clearLocalReader() {
-  localStorage.removeItem(LOCAL_READER_KEY);
-  localReaderContent.innerHTML = '<p class="local-reader-empty">请选择本地文本文件开始阅读。</p>';
-  localFileInput.value = "";
-  setLocalReaderStatus("已清空本地阅读器内容");
+  localStorage.removeItem(READER_STATE_KEY);
+  localReaderMeta.classList.add("hidden");
+  localReaderMeta.innerHTML = "";
+  localReaderContent.innerHTML = '<p class="local-reader-empty">请在搜索结果或书架中点击“站内阅读”开始。</p>';
+  setLocalReaderStatus("已清空阅读内容");
 }
 
 const PLACEHOLDER_SVG =
@@ -214,6 +230,7 @@ function renderCards(items) {
     ${subject ? `<p class="magazine-subject">${subject}</p>` : ""}
     <div class="magazine-actions">
       <a class="view-btn" href="${url}" target="_blank" rel="noopener noreferrer">📖 阅读</a>
+      <button class="shelf-btn read-here-btn" data-read-id="${item.id}">🧾 站内阅读</button>
       ${shelfBtnHtml}
     </div>
   </div>
@@ -225,7 +242,7 @@ function renderCards(items) {
 
 // ─── 渲染：书架 ────────────────────────────────────────────────────────────
 function renderShelf() {
-  const shelf = loadShelf();
+    const shelf = loadShelf();
   const items = Object.values(shelf);
 
   if (!items.length) {
@@ -257,6 +274,7 @@ function renderShelf() {
     <p class="magazine-meta shelf-date-label">${dateLabel}</p>
     <div class="magazine-actions">
       <a class="view-btn" href="${url}" target="_blank" rel="noopener noreferrer">📖 阅读</a>
+      <button class="shelf-btn read-here-btn" data-read-id="${item.id}">🧾 站内阅读</button>
       <button class="shelf-btn shelf-btn--remove" data-id="${item.id}">移除</button>
     </div>
   </div>
@@ -271,44 +289,47 @@ function switchTab(tabName) {
   if (tabName === "bookshelf") renderShelf();
 }
 
-async function readFileAsText(file) {
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = () => reject(new Error("文件读取失败"));
-    reader.readAsText(file, "utf-8");
-  });
+function getItemForReader(bookId) {
+  const fromCurrent = currentItems[bookId];
+  if (fromCurrent) return fromCurrent;
+  const shelf = loadShelf();
+  return shelf[bookId] || null;
 }
 
-async function handleLocalFile(file) {
-  if (!file) {
-    setLocalReaderStatus("请选择一个文件后再导入", true);
-    return;
-  }
-
-  const lowerName = (file.name || "").toLowerCase();
-  const isSupported = [".txt", ".md", ".html", ".htm"].some(ext => lowerName.endsWith(ext));
-  if (!isSupported) {
-    setLocalReaderStatus(`不支持的文件类型：${file.name}`, true);
-    return;
-  }
-
-  setLocalReaderStatus(`正在读取：${file.name}`);
+async function openBookInReader(bookId) {
+  if (!bookId) return;
+  const fallbackItem = getItemForReader(bookId);
+  const fallbackTitle = fallbackItem?.title || `书籍 #${bookId}`;
+  setLocalReaderStatus(`正在加载：${fallbackTitle}`);
+  switchTab("local-reader");
   try {
-    const rawText = await readFileAsText(file);
-    const content = lowerName.endsWith(".html") || lowerName.endsWith(".htm")
-      ? extractTextFromHtml(rawText)
-      : rawText;
-    renderLocalReaderContent(content, file.name);
-    saveLocalReaderState(file.name, content);
+    const resp = await fetch(`/api/magazine/${encodeURIComponent(bookId)}/read`);
+    const data = await resp.json();
+    if (!resp.ok) {
+      throw new Error(data?.detail || `HTTP ${resp.status}`);
+    }
+    const source = data.source_url || fallbackItem?.webpage_url || "";
+    const title = data.title || fallbackTitle;
+    const creator = data.creator || fallbackItem?.creator || "未知";
+    const content = data.content || "";
+    renderLocalReaderContent(content, title, { title, creator, source });
+    saveLocalReaderState({ id: String(bookId), title, creator, source, content });
   } catch (err) {
     console.error(err);
-    setLocalReaderStatus(`读取失败：${err.message || "未知错误"}`, true);
+    renderLocalReaderMeta(null);
+    localReaderContent.innerHTML = '<p class="local-reader-empty">加载失败，请稍后重试或改用原页阅读。</p>';
+    setLocalReaderStatus(`加载失败：${err.message || "未知错误"}`, true);
   }
 }
 
 // ─── 事件委托（统一处理卡片内按钮） ────────────────────────────────────────
 document.addEventListener("click", e => {
+  const readHereBtn = e.target.closest(".read-here-btn");
+  if (readHereBtn) {
+    openBookInReader(readHereBtn.dataset.readId);
+    return;
+  }
+
   // "加入书架" 按钮
   const shelfBtn = e.target.closest(".shelf-btn:not(.shelf-btn--remove)");
   if (shelfBtn) {
@@ -371,11 +392,6 @@ quickButtons.forEach(btn => {
   });
 });
 
-localFileInput.addEventListener("change", async () => {
-  const [file] = localFileInput.files || [];
-  await handleLocalFile(file);
-});
-
 clearLocalReaderBtn.addEventListener("click", () => {
   clearLocalReader();
 });
@@ -385,8 +401,16 @@ updateShelfBadge();
 hideError();
 const localReaderState = loadLocalReaderState();
 if (localReaderState.content) {
-  renderLocalReaderContent(localReaderState.content, localReaderState.source || "上次导入文件");
+  renderLocalReaderContent(
+    localReaderState.content,
+    localReaderState.title || "上次阅读书籍",
+    {
+      title: localReaderState.title,
+      creator: localReaderState.creator,
+      source: localReaderState.source,
+    }
+  );
 } else {
-  setLocalReaderStatus("尚未导入文件");
+  setLocalReaderStatus("尚未打开书籍");
 }
 fetchSearch("Magazine");

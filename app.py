@@ -2,6 +2,8 @@
 历史杂志抓取网站 - 从 Project Gutenberg 抓取并展示历史书籍
 """
 from contextlib import asynccontextmanager
+from html import unescape
+from html.parser import HTMLParser
 from typing import Any
 
 import httpx
@@ -64,6 +66,86 @@ def _normalize_magazine_entry(doc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+class _VisibleTextExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self._parts: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style", "noscript"}:
+            self._skip_depth += 1
+            return
+        if self._skip_depth > 0:
+            return
+        if tag in {"p", "div", "section", "article", "br", "li", "h1", "h2", "h3", "h4"}:
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style", "noscript"}:
+            self._skip_depth = max(0, self._skip_depth - 1)
+            return
+        if self._skip_depth > 0:
+            return
+        if tag in {"p", "div", "section", "article", "li"}:
+            self._parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth > 0:
+            return
+        if data.strip():
+            self._parts.append(data.strip())
+            self._parts.append(" ")
+
+    def get_text(self) -> str:
+        raw = unescape("".join(self._parts))
+        lines = [" ".join(line.split()) for line in raw.splitlines()]
+        text = "\n".join(line for line in lines if line)
+        return text.strip()
+
+
+async def _fetch_magazine_doc(identifier: str) -> dict[str, Any]:
+    url = f"{GUTENDEX_API_URL}?ids={identifier}"
+    try:
+        resp = await HTTP_CLIENT.get(url)
+        resp.raise_for_status()
+        data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"获取详情失败: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"获取详情失败: {exc}") from exc
+
+    results = data.get("results", [])
+    if not results:
+        raise HTTPException(status_code=404, detail=f"文档不存在: {identifier}")
+    return results[0]
+
+
+def _pick_read_source(formats: dict[str, Any], identifier: str) -> tuple[str, str]:
+    candidates = (
+        "text/plain; charset=utf-8",
+        "text/plain",
+        "text/html; charset=utf-8",
+        "text/html",
+    )
+    for key in candidates:
+        value = formats.get(key)
+        if isinstance(value, str) and value:
+            return value, key
+    return f"https://www.gutenberg.org/files/{identifier}/{identifier}-0.txt", "text/plain"
+
+
+def _normalize_read_text(raw_text: str, source_format: str) -> str:
+    if "html" in source_format:
+        parser = _VisibleTextExtractor()
+        parser.feed(raw_text)
+        parser.close()
+        text = parser.get_text()
+    else:
+        text = raw_text
+    return text.replace("\r\n", "\n").strip()
+
+
 async def _search_magazines(query: str, limit: int) -> list[dict[str, Any]]:
     """从 Project Gutenberg 搜索历史刊物及文献"""
     params = {"search": query}
@@ -101,21 +183,39 @@ async def search_magazines(
 @app.get("/api/magazine/{identifier}")
 async def magazine_info(identifier: str) -> JSONResponse:
     """获取单本古腾堡文档详情"""
-    url = f"{GUTENDEX_API_URL}?ids={identifier}"
+    doc = await _fetch_magazine_doc(identifier)
+    return JSONResponse(_normalize_magazine_entry(doc))
+
+
+@app.get("/api/magazine/{identifier}/read")
+async def magazine_read(identifier: str) -> JSONResponse:
+    """获取站内阅读正文（纯文本）"""
+    doc = await _fetch_magazine_doc(identifier)
+    formats = doc.get("formats", {})
+    source_url, source_format = _pick_read_source(formats, identifier)
     try:
-        resp = await HTTP_CLIENT.get(url)
+        resp = await HTTP_CLIENT.get(source_url)
         resp.raise_for_status()
-        data = resp.json()
     except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"获取详情失败: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"正文获取失败: {exc}") from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"获取详情失败: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"正文获取失败: {exc}") from exc
 
-    results = data.get("results", [])
-    if not results:
-        raise HTTPException(status_code=404, detail=f"文档不存在: {identifier}")
+    raw_text = resp.text or ""
+    content = _normalize_read_text(raw_text, source_format)
+    if not content:
+        raise HTTPException(status_code=404, detail="该书籍暂无可显示正文")
 
-    return JSONResponse(_normalize_magazine_entry(results[0]))
+    normalized = _normalize_magazine_entry(doc)
+    return JSONResponse(
+        {
+            "id": normalized["id"],
+            "title": normalized["title"],
+            "creator": normalized["creator"],
+            "source_url": normalized["webpage_url"],
+            "content": content,
+        }
+    )
 
 
 # ─── 静态文件 ─────────────────────────────────────────────────────────────────
