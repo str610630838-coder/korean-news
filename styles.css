@@ -298,6 +298,80 @@ body {
 
 .shelf-date-label { font-size: 0.78rem; }
 
+/* ══════════════ 本地阅读器 ══════════════ */
+
+.local-reader-header h2 {
+  font-size: 1.1rem;
+  font-family: "Noto Serif SC", serif;
+}
+
+.local-reader-header p {
+  margin-top: 0.4rem;
+  color: var(--text-sub);
+  font-size: 0.86rem;
+}
+
+.local-reader-controls {
+  margin-top: 0.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.local-file-label,
+.secondary-btn {
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-sub);
+  padding: 0.5rem 0.8rem;
+  cursor: pointer;
+  font-size: 0.83rem;
+  transition: all 0.2s;
+}
+
+.local-file-label:hover,
+.secondary-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand-hover);
+  background: var(--brand-dim);
+}
+
+#localFileInput {
+  max-width: 320px;
+  color: var(--text-sub);
+  font-size: 0.82rem;
+}
+
+.local-reader-status {
+  margin-top: 0.85rem;
+  color: var(--text-dim);
+  font-size: 0.84rem;
+}
+
+.local-reader-status--error { color: #ffb0bf; }
+
+.local-reader-content {
+  margin-top: 0.85rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(10, 12, 18, 0.65);
+  min-height: 260px;
+  line-height: 1.85;
+  color: var(--text-main);
+  overflow-wrap: anywhere;
+}
+
+.local-reader-content p + p { margin-top: 1rem; }
+
+.local-reader-empty {
+  color: var(--text-dim);
+  text-align: center;
+  margin-top: 3rem;
+}
+
 /* ══════════════ 书籍卡片 ══════════════ */
 
 .magazine-grid {
@@ -450,6 +524,16 @@ body {
 
   #searchForm { flex-direction: column; }
   #searchBtn { width: 100%; }
+
+  .local-reader-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #localFileInput {
+    max-width: none;
+    width: 100%;
+  }
 
   .magazine-grid {
     grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));

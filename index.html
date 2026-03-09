@@ -28,6 +28,7 @@
         📚 我的书架
         <span id="shelfCount" class="shelf-badge" style="display:none">0</span>
       </button>
+      <button class="tab-btn" data-tab="local-reader">📄 本地阅读器</button>
     </div>
 
     <!-- 搜索标签页 -->
@@ -58,6 +59,23 @@
         <span id="shelfStatus" class="shelf-status"></span>
       </div>
       <div id="shelfGrid" class="magazine-grid"></div>
+    </section>
+
+    <!-- 本地阅读器标签页 -->
+    <section id="tab-local-reader" class="tab-content search-panel">
+      <div class="local-reader-header">
+        <h2>本地阅读器</h2>
+        <p>导入 txt / md / html / htm 文件后，正文会直接渲染在页面中，方便沉浸式翻译插件识别。</p>
+      </div>
+      <div class="local-reader-controls">
+        <label class="local-file-label" for="localFileInput">选择本地文件</label>
+        <input id="localFileInput" type="file" accept=".txt,.md,.html,.htm,text/plain,text/html,text/markdown" />
+        <button id="clearLocalReaderBtn" class="secondary-btn" type="button">清空内容</button>
+      </div>
+      <div id="localReaderStatus" class="local-reader-status">尚未导入文件</div>
+      <article id="localReaderContent" class="local-reader-content">
+        <p class="local-reader-empty">请选择本地文本文件开始阅读。</p>
+      </article>
     </section>
   </main>
 
