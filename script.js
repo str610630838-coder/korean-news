@@ -438,13 +438,26 @@ function _renderParagraphs(text) {
 
 /**
  * 通知翻译插件（沉浸式翻译等）本区域有新内容需要处理。
- * 插件首次扫描时 #chapterText 为空并被标记为已处理；
- * 章节动态注入后需重置该标记并触发重新扫描。
+ * 插件首次扫描时会沿 DOM 树向上标记祖先节点为"已处理"；
+ * 章节动态注入后，必须清除从 <body> 到 #chapterText 整条路径上
+ * 所有元素的 walked/effect 标记，插件才会重新向下扫描。
  */
 function _notifyTranslationPlugins() {
-  // 清除"已处理"标记，使插件对本容器重新扫描
-  chapterText.removeAttribute("data-immersive-translate-walked");
-  readerContent.removeAttribute("data-immersive-translate-walked");
+  // 清除 #chapterText 到 <body> 整条祖先链上的"已处理"标记
+  let node = chapterText;
+  while (node && node !== document.documentElement) {
+    node.removeAttribute("data-immersive-translate-walked");
+    node.removeAttribute("data-immersive-translate-effect");
+    node = node.parentElement;
+  }
+
+  // 同时清除 #chapterText 内所有子元素的标记（切换章节时残留）
+  chapterText
+    .querySelectorAll("[data-immersive-translate-walked],[data-immersive-translate-effect]")
+    .forEach(el => {
+      el.removeAttribute("data-immersive-translate-walked");
+      el.removeAttribute("data-immersive-translate-effect");
+    });
 
   // 等渲染完成后调用插件 API
   requestAnimationFrame(() => {
@@ -463,7 +476,7 @@ function _notifyTranslationPlugins() {
         document.dispatchEvent(new CustomEvent("immersive-translate:page-loaded"));
         chapterText.dispatchEvent(new CustomEvent("translate:new-content", { bubbles: true }));
       } catch (_) {}
-    }, 80);
+    }, 200);
   });
 }
 
