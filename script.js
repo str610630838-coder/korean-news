@@ -122,38 +122,70 @@ function _splitChapters(rawText) {
   });
 }
 
+/** 将 URL 强制升级为 HTTPS，避免 HTTPS 页面被浏览器阻断混合内容 */
+function _toHttps(url) {
+  return url.replace(/^http:\/\//i, "https://");
+}
+
+/** 依次尝试多个 URL，返回第一个成功响应的文本；全部失败则抛出最后一个错误 */
+async function _fetchText(urls) {
+  let lastErr;
+  for (const url of urls) {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return await resp.text();
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr;
+}
+
 async function _fetchBookChapters(bookId) {
   if (_chapterCache[bookId]) return _chapterCache[bookId];
 
   // 获取书籍元数据（含文本文件 URL）
-  const metaResp = await fetch(`https://gutendex.com/books/?ids=${encodeURIComponent(bookId)}`);
-  if (!metaResp.ok) throw new Error(`Gutendex 请求失败: HTTP ${metaResp.status}`);
-  const meta = await metaResp.json();
+  let meta;
+  try {
+    const metaResp = await fetch(`https://gutendex.com/books/?ids=${encodeURIComponent(bookId)}`);
+    if (!metaResp.ok) throw new Error(`Gutendex 请求失败: HTTP ${metaResp.status}`);
+    meta = await metaResp.json();
+  } catch (e) {
+    throw new Error(`获取书籍信息失败：${e.message}`);
+  }
 
   const results = meta.results || [];
   if (!results.length) throw new Error(`书籍不存在: ${bookId}`);
 
   const formats = results[0].formats || {};
-  const textUrl =
+  const rawUrl =
     formats["text/plain; charset=utf-8"] ||
     formats["text/plain; charset=us-ascii"] ||
     formats["text/plain"];
 
-  if (!textUrl) throw new Error("该书籍无纯文本版本，无法按章节加载");
+  if (!rawUrl) throw new Error("该书籍无纯文本版本，无法按章节加载");
 
-  // 先直连获取，失败时（CORS/网络）自动切换 CORS 代理重试
+  // 强制 HTTPS，并准备 CORS 代理备用地址
+  const textUrl = _toHttps(rawUrl);
+  const proxyUrls = [
+    `https://corsproxy.io/?url=${encodeURIComponent(textUrl)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(textUrl)}`,
+  ];
+
   let text;
   try {
-    const textResp = await fetch(textUrl);
-    if (!textResp.ok) throw new Error(`获取书籍文本失败: HTTP ${textResp.status}`);
-    text = await textResp.text();
-  } catch (directErr) {
-    if (directErr.message && directErr.message.startsWith("获取书籍文本失败")) throw directErr;
-    // 网络/CORS 错误 — 通过代理重试
-    const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(textUrl)}`;
-    const proxyResp = await fetch(proxyUrl);
-    if (!proxyResp.ok) throw new Error(`获取书籍文本失败: HTTP ${proxyResp.status}`);
-    text = await proxyResp.text();
+    // 优先直连；iOS Safari / 跨域受限时会抛出 TypeError
+    const resp = await fetch(textUrl);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    text = await resp.text();
+  } catch {
+    // 直连失败 → 依次尝试代理
+    try {
+      text = await _fetchText(proxyUrls);
+    } catch (proxyErr) {
+      throw new Error(`获取书籍文本失败：${proxyErr.message}`);
+    }
   }
 
   _chapterCache[bookId] = _splitChapters(text);
