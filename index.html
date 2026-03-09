@@ -21,9 +21,20 @@
   </header>
 
   <main class="container">
-    <section class="search-panel">
+    <!-- 标签导航 -->
+    <div class="tab-nav">
+      <button class="tab-btn active" data-tab="search">🔍 搜索</button>
+      <button class="tab-btn" data-tab="bookshelf">
+        📚 我的书架
+        <span id="shelfCount" class="shelf-badge" style="display:none">0</span>
+      </button>
+    </div>
+
+    <!-- 搜索标签页 -->
+    <section id="tab-search" class="tab-content active search-panel">
       <form id="searchForm">
-        <input id="searchInput" type="search" placeholder="输入关键词，例如：Magazine / History / Science" autocomplete="off" />
+        <input id="searchInput" type="search" placeholder="输入关键词，例如：Magazine / History / Science"
+          autocomplete="off" />
         <button id="searchBtn" type="submit">搜索文献</button>
       </form>
       <div class="quick-actions">
@@ -39,11 +50,60 @@
       <div id="errorBox" class="error hidden"></div>
       <div id="magazineGrid" class="magazine-grid"></div>
     </section>
+
+    <!-- 书架标签页 -->
+    <section id="tab-bookshelf" class="tab-content search-panel">
+      <div class="shelf-header">
+        <h2>我的书架</h2>
+        <span id="shelfStatus" class="shelf-status"></span>
+      </div>
+      <div id="shelfGrid" class="magazine-grid"></div>
+    </section>
   </main>
 
   <footer class="footer">
     数据来源于 Project Gutenberg，采用原生 HTML/EPUB 网页渲染，完全拒绝 PDF，尽享流畅阅读体验。
   </footer>
+
+  <!-- 全屏阅读器 -->
+  <div id="readerModal" class="reader-modal hidden">
+    <div class="reader-header">
+      <button id="closeReader" class="reader-icon-btn">✕ 关闭</button>
+      <div class="reader-title-area">
+        <h2 id="readerTitle" class="reader-book-title"></h2>
+        <span id="readerChapterInfo" class="reader-chapter-info"></span>
+      </div>
+      <button id="toggleSidebar" class="reader-icon-btn">☰ 章节</button>
+    </div>
+
+    <!-- 顶部总进度条 -->
+    <div class="reader-progress-bar">
+      <div id="progressFill" class="reader-progress-fill"></div>
+    </div>
+
+    <div class="reader-body">
+      <!-- 章节侧栏 -->
+      <aside id="chapterSidebar" class="chapter-sidebar">
+        <h3 class="sidebar-title">章节目录</h3>
+        <ul id="chapterList" class="chapter-list"></ul>
+      </aside>
+
+      <!-- 阅读主区 -->
+      <div class="reader-main">
+        <div id="readerContent" class="reader-content">
+          <div id="chapterLoading" class="reader-loading hidden">正在加载章节…</div>
+          <h2 id="chapterTitle" class="chapter-heading"></h2>
+          <pre id="chapterText" class="chapter-body"></pre>
+        </div>
+
+        <div class="reader-controls">
+          <button id="prevChapter" class="reader-nav-btn" disabled>← 上一章</button>
+          <span id="chapterIndicator" class="chapter-indicator">— / —</span>
+          <button id="nextChapter" class="reader-nav-btn" disabled>下一章 →</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="script.js"></script>
 </body>
